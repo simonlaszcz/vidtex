@@ -53,6 +53,7 @@ static char *vt_duplicate_token(char *token);
 static int vt_scan_array(char *token, int buffer[]);
 static void vt_free_rc(struct vt_rc_entry **rc_data, int rc_data_count);
 static int vt_parse_options(int argc, char *argv[], struct vt_session_state *session);
+static struct vt_rc_entry *vt_show_rc_menu(struct vt_rc_entry **rc_data, int rc_data_count);
 static int vt_connect(struct vt_session_state *session);
 static bool vt_is_valid_fd(int fd);
 static int vt_transform_input(int ch);
@@ -225,8 +226,6 @@ vt_cleanup(struct vt_session_state *session)
 static int 
 vt_get_rc(struct vt_rc_entry ***rc_data, int *rc_data_count)
 {
-    *rc_data = NULL;
-    *rc_data_count = 0;
     FILE *fin = fopen(RCFILE, "rt");
 
     if (fin == NULL) {
@@ -234,8 +233,8 @@ vt_get_rc(struct vt_rc_entry ***rc_data, int *rc_data_count)
     }
 
     char buffer[BUFFER_LEN];
-    int count = 0;
-    struct vt_rc_entry **root = NULL;
+    int count = *rc_data_count;
+    struct vt_rc_entry **root = *rc_data;
     char *sin = fgets(buffer, BUFFER_LEN, fin);
 
     while (sin != NULL) {
@@ -309,16 +308,13 @@ vt_get_rc(struct vt_rc_entry ***rc_data, int *rc_data_count)
     }
 
     *rc_data = root;
-    *rc_data_count = count;
+    *rc_data_count += count;
     fclose(fin);
     return EXIT_SUCCESS;
 
 abend:
     fprintf(stderr, "Errors found in configuration file\n");
     fclose(fin);
-    if (root != NULL) {
-        vt_free_rc(root, count);
-    }
     return EXIT_FAILURE;
 }
 
@@ -371,12 +367,11 @@ vt_parse_options(int argc, char *argv[], struct vt_session_state *session)
 {
     int optrv = 0;
     int optidx = 0;
-    int rcidx = 0;
     struct option long_options[] = {
         {"host", required_argument, 0, 0},
         {"port", required_argument, 0, 0},
         {"dump", required_argument, 0, 0},
-        {"index", required_argument, 0, 0},
+        {"menu", no_argument, 0, 0},
         {"cursor", no_argument, 0, 0},
         {"markup", no_argument, 0, 0},
         {"mono", no_argument, 0, 0},
@@ -408,20 +403,16 @@ vt_parse_options(int argc, char *argv[], struct vt_session_state *session)
                 break;
             case 3:
                 if (session->rc_data_count > 0) {
-                    rcidx = atoi(optarg);
+                    session->selected_rc = 
+                        vt_show_rc_menu(session->rc_data, session->rc_data_count);
 
-                    if (rcidx > -1 && rcidx < session->rc_data_count) {
-                        session->selected_rc = session->rc_data[rcidx];
+                    if (session->selected_rc != NULL) {
                         session->host = (*session->selected_rc).host;
                         session->port = (*session->selected_rc).port;
                     }
-                    else {
-                        fprintf(stderr, "Index %d not found in %s\n", rcidx, RCFILE);
-                        goto abend;
-                    }
                 }
                 else {
-                    fprintf(stderr, "%s is empty\n", RCFILE);
+                    fprintf(stderr, "No configuration found\n");
                     goto abend;
                 }
                 break;
@@ -463,6 +454,30 @@ vt_parse_options(int argc, char *argv[], struct vt_session_state *session)
 
 abend:
     return EXIT_FAILURE;
+}
+
+static struct vt_rc_entry *
+vt_show_rc_menu(struct vt_rc_entry **rc_data, int rc_data_count)
+{
+    printf("%3s %-20s %-30s %-10s\n", "#", "Name", "Host", "Port");
+
+    for (int i = 0; i < rc_data_count; ++i) {
+        struct vt_rc_entry *e = rc_data[i];
+        printf("%3d %-20s %-30s %-10s\n", i, e->name, e->host, e->port);
+    }
+
+    int choice = -1;
+
+    while (choice < 0 || choice >= rc_data_count) {
+        printf("? ");
+        scanf("%d", &choice);
+
+        if (choice == EOF) {
+            return NULL;
+        }
+    }
+
+    return rc_data[choice];
 }
 
 static int 
