@@ -22,7 +22,6 @@
 #define USAGE "Usage:\n"
 #define BUFFER_LEN 1024
 #define MAX_AMBLE_LEN 10
-#define SLOW_SLEEP_MUS 50000
 
 struct vt_rc_entry
 {
@@ -37,7 +36,6 @@ struct vt_rc_entry
 
 struct vt_session_state
 {
-    bool slow_mode;
     FILE *dump_file;
     struct vt_rc_entry **rc_data;
     int rc_data_count;
@@ -57,7 +55,7 @@ static void vt_free_rc(struct vt_rc_entry **rc_data, int rc_data_count);
 static int vt_parse_options(int argc, char *argv[], struct vt_session_state *session);
 static int vt_connect(struct vt_session_state *session);
 static bool vt_is_valid_fd(int fd);
-static int vt_wait_for_data(int socket_fd, int timeout);
+static int vt_transform_input(int ch);
 
 volatile sig_atomic_t terminate_received = false;
 volatile sig_atomic_t socket_closed = false;
@@ -114,34 +112,37 @@ main(int argc, char *argv[])
     noecho();
 
     uint8_t buffer[BUFFER_LEN];
-    int read_max = session.slow_mode ? 2 : BUFFER_LEN;;
+    struct pollfd poll_data[2] = {
+        {.fd = session.socket_fd, .events = POLLIN},
+        {.fd = STDIN_FILENO, .events = POLLIN}
+    };
 
     while (!(terminate_received || socket_closed)) {
-        int sz = vt_wait_for_data(session.socket_fd, 100);
+        int sz = poll(poll_data, 2, 100);
 
         if (sz > 0) {
-            sz = read(session.socket_fd, buffer, read_max);
+            if ((poll_data[0].revents & POLLIN) == POLLIN) {
+                sz = read(session.socket_fd, buffer, BUFFER_LEN);
 
-            if (sz > 0) {
-                vt_decode(&session.decoder_state, buffer, sz);
+                if (sz > 0) {
+                    vt_decode(&session.decoder_state, buffer, sz);
 
-                if (session.dump_file != NULL) {
-                    fwrite(buffer, sizeof(uint8_t), sz, session.dump_file);
-                }
-
-                if (session.slow_mode) {
-                    usleep(SLOW_SLEEP_MUS);
+                    if (session.dump_file != NULL) {
+                        fwrite(buffer, sizeof(uint8_t), sz, session.dump_file);
+                    }
                 }
             }
-        }
 
-        int ch = getch();
+            if ((poll_data[1].revents & POLLIN) == POLLIN) {
+                int ch = vt_transform_input(getch());
 
-        if (ch != EOF) {
-            sz = write(session.socket_fd, &ch, 1);
+                if (ch != EOF) {
+                    sz = write(session.socket_fd, &ch, 1);
 
-            if (sz < 1) {
-                socket_closed = true;
+                    if (sz < 1) {
+                        socket_closed = true;
+                    }
+                }
             }
         }
     }
@@ -178,7 +179,7 @@ vt_cleanup(struct vt_session_state *session)
         int *buffer = default_buffer;
         int len = 4;
         
-        if (session->selected_rc->postamble_length > 0) {
+        if (session->selected_rc != NULL && session->selected_rc->postamble_length > 0) {
             buffer = session->selected_rc->postamble;
             len = session->selected_rc->postamble_length;
         }
@@ -377,7 +378,6 @@ vt_parse_options(int argc, char *argv[], struct vt_session_state *session)
         {"dump", required_argument, 0, 0},
         {"index", required_argument, 0, 0},
         {"cursor", no_argument, 0, 0},
-        {"slow", no_argument, 0, 0},
         {"markup", no_argument, 0, 0},
         {"mono", no_argument, 0, 0},
         {"trace", required_argument, 0, 0},
@@ -389,10 +389,10 @@ vt_parse_options(int argc, char *argv[], struct vt_session_state *session)
         case 0:
             switch (optidx) {
             case 0:
-                session->host = optarg;
+                session->host = vt_duplicate_token(optarg);
                 break;
             case 1:
-                session->port = optarg;
+                session->port = vt_duplicate_token(optarg);
                 break;
             case 2:
                 if (session->dump_file != NULL) {
@@ -429,15 +429,12 @@ vt_parse_options(int argc, char *argv[], struct vt_session_state *session)
                 session->decoder_state.force_cursor = true;
                 break;
             case 5:
-                session->slow_mode = true;
-                break;
-            case 6:
                 session->decoder_state.markup_mode = true;
                 break;
-            case 7:
+            case 6:
                 session->decoder_state.mono_mode = true;
                 break;
-            case 8:
+            case 7:
                 if (session->decoder_state.trace_file != NULL) {
                     fprintf(stderr, USAGE);
                     goto abend;
@@ -511,7 +508,7 @@ vt_connect(struct vt_session_state *session)
         goto abend;
     }
 
-//TODO: use rc preamble
+//TODO: use rc preamble. Always write 22
 
     int preamble[4] = {22, 255, 253, 3};
     int sz = write(session->socket_fd, preamble, 4);
@@ -541,9 +538,14 @@ vt_is_valid_fd(int fd)
     return !(flags == -1 || errno == EBADF);
 }
 
-static int 
-vt_wait_for_data(int socket_fd, int timeout)
+static int
+vt_transform_input(int ch)
 {
-    struct pollfd recv_poll_data = {.fd = socket_fd, .events = POLLIN};
-    return poll(&recv_poll_data, 1, timeout);
+    switch (ch) {
+    case '#':
+    case '\n':
+        return '_';
+    default:
+        return ch;
+    }
 }
