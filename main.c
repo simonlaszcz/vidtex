@@ -44,11 +44,12 @@ struct vt_session_state
     char *port;
     int socket_fd;
     struct vt_decoder_state decoder_state;
+    char *cwd;
 };
 
 static void vt_terminate(int signal);
 static void vt_cleanup(struct vt_session_state *session);
-static int vt_get_rc(struct vt_rc_entry ***rc_data, int *rc_data_count);
+static int vt_get_rc(const char *dir, struct vt_rc_entry ***rc_data, int *rc_data_count);
 static char *vt_duplicate_token(char *token);
 static int vt_scan_array(char *token, int buffer[]);
 static void vt_free_rc(struct vt_rc_entry **rc_data, int rc_data_count);
@@ -93,8 +94,20 @@ main(int argc, char *argv[])
         goto abend;
     }
 
-    if (vt_get_rc(&session.rc_data, &session.rc_data_count) != EXIT_SUCCESS) {
-        goto abend;
+    char *home = getenv("HOME");
+    if (home != NULL) {
+        if (vt_get_rc(home, &session.rc_data, &session.rc_data_count) != EXIT_SUCCESS) {
+            goto abend;
+        }
+    }
+
+    session.cwd = getcwd(NULL, 0);
+    if (session.cwd != NULL) {
+        if (strcmp(home, session.cwd) != 0) {
+            if (vt_get_rc(session.cwd, &session.rc_data, &session.rc_data_count) != EXIT_SUCCESS) {
+                goto abend;
+            }
+        }
     }
 
     if (vt_parse_options(argc, argv, &session) != EXIT_SUCCESS) {
@@ -221,12 +234,29 @@ vt_cleanup(struct vt_session_state *session)
     if (session->port != NULL) {
         free(session->port);
     }
+
+    if (session->cwd != NULL) {
+        free(session->cwd);
+    }
 }
 
 static int 
-vt_get_rc(struct vt_rc_entry ***rc_data, int *rc_data_count)
+vt_get_rc(const char *dir, struct vt_rc_entry ***rc_data, int *rc_data_count)
 {
-    FILE *fin = fopen(RCFILE, "rt");
+    char path_buffer[BUFFER_LEN] = {0};
+    int sz = snprintf(path_buffer, BUFFER_LEN, "%s/%s", dir, RCFILE);
+
+    if (sz < 0) {
+        vt_perror();
+        return EXIT_FAILURE;
+    }
+    else if (sz >= BUFFER_LEN) {
+        errno = EOVERFLOW;
+        vt_perror();
+        return EXIT_FAILURE;
+    }
+
+    FILE *fin = fopen(path_buffer, "rt");
 
     if (fin == NULL) {
         return EXIT_SUCCESS;
@@ -308,7 +338,7 @@ vt_get_rc(struct vt_rc_entry ***rc_data, int *rc_data_count)
     }
 
     *rc_data = root;
-    *rc_data_count += count;
+    *rc_data_count = count;
     fclose(fin);
     return EXIT_SUCCESS;
 
@@ -360,6 +390,7 @@ vt_scan_array(char *token, int buffer[])
 static void 
 vt_free_rc(struct vt_rc_entry **rc, int count)
 {
+//TODO
 }
 
 static int
