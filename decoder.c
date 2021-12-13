@@ -167,6 +167,7 @@ vt_decode(struct vt_decoder_state *state, uint8_t *buffer, int count)
                 case 0:     //  NUL (alpha black at level 2.5+)
                 case 14:    //  Shift Out
                 case 15:    //  Shift In
+                    break;
                 case 8: //  Flash
                     state->after_flags.is_flashing = true;
                     vt_trace(state, "set-after-flash=true\n");
