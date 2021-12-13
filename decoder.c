@@ -1,4 +1,4 @@
-//#include <stdarg.h>
+#include <stdarg.h>
 #include "decoder.h"
 #define ATTRS_IGNORED_TO_EOL_MASK (~A_UNDERLINE)
 
@@ -273,6 +273,7 @@ vt_decode(struct vt_decoder_state *state, uint8_t *buffer, int count)
 
                 if (!state->flags.is_alpha) {
                     state->flags.held_mosaic = state->last_character;
+                    vt_trace(state, "held-mosaic='%lc'\n", state->flags.held_mosaic);
                 }
 
                 if (state->row == 0) {
@@ -311,24 +312,25 @@ vt_toggle_flash(struct vt_decoder_state *state)
     state->screen_flash_state = !state->screen_flash_state;
 
     for (int r = 0; r < MAX_ROWS; ++r) {
+        struct vt_decoder_cell *row = state->cells[r];
         int c = 0;
 
         while (c < MAX_COLS) {
-            while (c < MAX_COLS && !state->cells[r][c].has_flash_attribute) {
+            while (c < MAX_COLS && !row[c].has_flash_attribute) {
                 ++c;
             }
 
             if (c < MAX_COLS) {
                 int start_c = c;
-                attr_t start_attr = state->cells[r][c].attribute;
-                short start_color = state->cells[r][c].color_pair;
                 int span = 1;
+                attr_t start_attr = row[c].attribute;
+                short start_color = row[c].color_pair;
                 ++c;
 
                 while (c < MAX_COLS 
-                    && state->cells[r][c].has_flash_attribute 
-                    && state->cells[r][c].color_pair == start_color
-                    && state->cells[r][c].attribute == start_attr) {
+                    && row[c].has_flash_attribute 
+                    && row[c].color_pair == start_color
+                    && row[c].attribute == start_attr) {
                     ++c;
                     ++span;
                 }
@@ -582,7 +584,12 @@ vt_put_char(struct vt_decoder_state *state, int row, int col, wchar_t ch, attr_t
     cell->character = ch;
     cell->color_pair = color;
     cell->has_flash_attribute = state->flags.is_flashing;
-    vt_trace(state, "putchar: char='%lc', code=%d, attr=%d, color=%d, row=%d, col=%d\n", ch, ch, attr, color, row, col);
+
+    if (markup_hint != MH_MASK) {
+        vt_trace(state, 
+            "putchar: char='%lc', code=%d, attr=%d, color=%d, flashing=%d, row=%d, col=%d\n", 
+            ch, ch, attr, color, state->flags.is_flashing, row, col);
+    }
 }
 
 static void 
