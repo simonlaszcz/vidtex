@@ -97,6 +97,14 @@ struct vt_decoder_after_flags
     enum vt_decoder_tristate is_double_height;
 };
 
+struct vt_decoder_cell
+{
+    attr_t attribute;
+    wchar_t character;
+    short color_pair;
+    bool has_flash_attribute;
+};
+
 struct vt_decoder_state
 {
     bool force_cursor;
@@ -114,13 +122,12 @@ struct vt_decoder_state
     int frame_buffer_offset;
     //  Store the characters written to the first row so we can check for the page number
     wchar_t header_row[MAX_COLS];
-    //  Track attributes used on screen
-    attr_t attributes[MAX_ROWS][MAX_COLS];
-    wchar_t characters[MAX_ROWS][MAX_COLS];
-    short color_pairs[MAX_ROWS][MAX_COLS];
+    bool screen_flash_state;
+    struct vt_decoder_cell cells[MAX_ROWS][MAX_COLS];
 };
 
 void vt_decoder_init(struct vt_decoder_state *state);
 void vt_decode(struct vt_decoder_state *state, uint8_t *buffer, int count);
+void vt_toggle_flash(struct vt_decoder_state *state);
 
 #endif

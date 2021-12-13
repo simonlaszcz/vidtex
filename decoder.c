@@ -250,7 +250,7 @@ vt_decode(struct vt_decoder_state *state, uint8_t *buffer, int count)
             //  Row 2 of double height text has no fg data
             //  When processing the next row, we need to ensure that we don't overwrite it
             if (state->flags.is_double_height) {
-                short color_below = state->color_pairs[state->double_height_lower_row][state->col];
+                short color_below = state->cells[state->double_height_lower_row][state->col].color_pair;
                 short fg, bg;
                 pair_content(color_below, &fg, &bg);
                 color_below = vt_get_color_pair_number(fg, state->flags.bg_color);
@@ -305,6 +305,49 @@ vt_decode(struct vt_decoder_state *state, uint8_t *buffer, int count)
     refresh();
 }
 
+void 
+vt_toggle_flash(struct vt_decoder_state *state)
+{
+    state->screen_flash_state = !state->screen_flash_state;
+
+    for (int r = 0; r < MAX_ROWS; ++r) {
+        int c = 0;
+
+        while (c < MAX_COLS) {
+            while (c < MAX_COLS && !state->cells[r][c].has_flash_attribute) {
+                ++c;
+            }
+
+            if (c < MAX_COLS) {
+                int start_c = c;
+                attr_t start_attr = state->cells[r][c].attribute;
+                short start_color = state->cells[r][c].color_pair;
+                int span = 1;
+                ++c;
+
+                while (c < MAX_COLS 
+                    && state->cells[r][c].has_flash_attribute 
+                    && state->cells[r][c].color_pair == start_color
+                    && state->cells[r][c].attribute == start_attr) {
+                    ++c;
+                    ++span;
+                }
+
+                if (state->screen_flash_state) {
+                    short fg, bg;
+                    pair_content(start_color, &fg, &bg);
+                    start_color = vt_get_color_pair_number(bg, fg);
+                }
+
+                mvchgat(r, start_c, span, start_attr, start_color, NULL);
+                refresh();
+            }
+
+            ++c;
+        }
+    }
+}
+
 /*
     Load(b64: string): void {
         Reset();
@@ -336,8 +379,7 @@ vt_decoder_new_frame(struct vt_decoder_state *state)
     state->frame_buffer_offset = 0;
     vt_decoder_reset_flags(&state->flags);
     vt_decoder_reset_after_flags(&state->after_flags);
-    memset(state->attributes, 0, sizeof(state->attributes));
-    memset(state->color_pairs, 0, sizeof(state->color_pairs));
+    memset(state->cells, 0, sizeof(state->cells));
 
     for (int i = 0; i < MAX_COLS; ++i) {
         state->header_row[i] = SPACE;
@@ -345,12 +387,7 @@ vt_decoder_new_frame(struct vt_decoder_state *state)
 
     for (int r = 0; r < MAX_ROWS; ++r) {
         for (int c = 0; c < MAX_COLS; ++c) {
-            state->characters[r][c] = SPACE;
-        }
-    }
-
-    for (int r = 0; r < MAX_ROWS; ++r) {
-        for (int c = 0; c < MAX_COLS; ++c) {
+            state->cells[r][c].character = SPACE;
             vt_put_char(state, r, c, SPACE, 0, 0, MH_MASK);
         }
     }
@@ -375,11 +412,12 @@ static void
 vt_decoder_fill_end(struct vt_decoder_state *state)
 {
     if (state->col > 0) {
-        attr_t attr = state->attributes[state->row][state->col - 1] & ATTRS_IGNORED_TO_EOL_MASK;
-        short color = state->color_pairs[state->row][state->col - 1];
-//TODO: testing + 1
+        struct vt_decoder_cell *prev = &state->cells[state->row][state->col - 1];
+        attr_t attr = prev->attribute & ATTRS_IGNORED_TO_EOL_MASK;
+        short color = prev->color_pair;
+
         for (int col = state->col; col < MAX_COLS; ++col) {
-            wchar_t ch = state->characters[state->row][col];
+            wchar_t ch = state->cells[state->row][col].character;
             vt_put_char(state, state->row, col, ch, attr, color, MH_FILL_END);
         }
     }
@@ -456,12 +494,10 @@ vt_get_attr(struct vt_decoder_state *state)
 {
     attr_t attr = 0;
 
-    if (state->flags.is_flashing) {
-        attr |= A_BLINK;
-    }
     if (state->flags.is_concealed) {
         attr |= A_PROTECT;
     }
+
     if (state->flags.is_double_height) {
         attr |= A_UNDERLINE;
     }
@@ -540,9 +576,12 @@ vt_put_char(struct vt_decoder_state *state, int row, int col, wchar_t ch, attr_t
     cchar_t cc;
     setcchar(&cc, vchar, attr, display_color, 0);
     mvadd_wch(row, col, &cc);
-    state->attributes[row][col] = attr;
-    state->characters[row][col] = ch;
-    state->color_pairs[row][col] = color;
+
+    struct vt_decoder_cell *cell = &state->cells[row][col];
+    cell->attribute = attr;
+    cell->character = ch;
+    cell->color_pair = color;
+    cell->has_flash_attribute = state->flags.is_flashing;
     vt_trace(state, "putchar: char='%lc', code=%d, attr=%d, color=%d, row=%d, col=%d\n", ch, ch, attr, color, row, col);
 }
 

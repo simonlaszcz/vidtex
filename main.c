@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/timerfd.h>
 #include <sys/types.h>
 #include <unistd.h>
 #include "bedstead.h"
@@ -45,6 +46,7 @@ struct vt_session_state
     int socket_fd;
     struct vt_decoder_state decoder_state;
     char *cwd;
+    int flash_timer_fd;
 };
 
 static void vt_terminate(int signal);
@@ -68,6 +70,7 @@ main(int argc, char *argv[])
 {
     memset(&session, 0, sizeof(struct vt_session_state));
     session.socket_fd = -1;
+    session.flash_timer_fd = -1;
 
     struct sigaction new_action;
     new_action.sa_handler = vt_terminate;
@@ -118,6 +121,18 @@ main(int argc, char *argv[])
         goto abend;
     }
 
+    session.flash_timer_fd = timerfd_create(CLOCK_REALTIME, TFD_NONBLOCK);
+    if (session.flash_timer_fd == -1) {
+        vt_perror();
+        goto abend;
+    }
+
+    struct itimerspec flash_time = {{1, 0}, {1, 0}};
+    if (timerfd_settime(session.flash_timer_fd, TFD_TIMER_ABSTIME, &flash_time, NULL) == -1) {
+        vt_perror();
+        goto abend;
+    }
+
     setlocale(LC_ALL, "");
     initscr();
     vt_decoder_init(&session.decoder_state);
@@ -126,13 +141,14 @@ main(int argc, char *argv[])
     noecho();
 
     uint8_t buffer[BUFFER_LEN];
-    struct pollfd poll_data[2] = {
+    struct pollfd poll_data[3] = {
         {.fd = session.socket_fd, .events = POLLIN},
-        {.fd = STDIN_FILENO, .events = POLLIN}
+        {.fd = STDIN_FILENO, .events = POLLIN},
+        {.fd = session.flash_timer_fd, .events = POLLIN}
     };
 
     while (!(terminate_received || socket_closed)) {
-        int sz = poll(poll_data, 2, 100);
+        int sz = poll(poll_data, 3, 100);
 
         if (sz > 0) {
             if ((poll_data[0].revents & POLLIN) == POLLIN) {
@@ -158,6 +174,19 @@ main(int argc, char *argv[])
                     }
                 }
             }
+
+            if ((poll_data[2].revents & POLLIN) == POLLIN) {
+                uint64_t elapsed = 0;
+                sz = read(session.flash_timer_fd, &elapsed, sizeof(uint64_t));
+
+                if (sz > 0) {
+                    vt_toggle_flash(&session.decoder_state);
+                }
+            }
+        }
+        else if (sz == -1 && errno != EINTR) {
+            vt_perror();
+            goto abend;
         }
     }
 
@@ -207,6 +236,12 @@ vt_cleanup(struct vt_session_state *session)
             if (close(session->socket_fd) == -1) {
                 vt_perror();
             }
+        }
+    }
+
+    if (session->flash_timer_fd > -1) {
+        if (close(session->flash_timer_fd) == -1) {
+            vt_perror();
         }
     }
 
