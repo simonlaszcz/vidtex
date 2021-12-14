@@ -1,6 +1,8 @@
 #include <stdarg.h>
 #include "decoder.h"
-#define ATTRS_IGNORED_TO_EOL_MASK (~A_UNDERLINE)
+
+#define DBL_HEIGHT_ATTR (A_BOLD)
+#define ATTRS_IGNORED_TO_EOL_MASK (~DBL_HEIGHT_ATTR)
 
 static void vt_decoder_new_frame(struct vt_decoder_state *state);
 static void vt_decoder_next_row(struct vt_decoder_state *state);
@@ -345,8 +347,6 @@ vt_toggle_flash(struct vt_decoder_state *state)
                 mvchgat(r, start_c, span, start_attr, start_color, NULL);
                 refresh();
             }
-
-            ++c;
         }
     }
 }
@@ -502,7 +502,7 @@ vt_get_attr(struct vt_decoder_state *state)
     }
 
     if (state->flags.is_double_height) {
-        attr |= A_UNDERLINE;
+        attr |= DBL_HEIGHT_ATTR;
     }
 
     return attr;
@@ -554,6 +554,7 @@ vt_put_char(struct vt_decoder_state *state, int row, int col, wchar_t ch, attr_t
 {
     short display_color = state->mono_mode ? 0 : color;
     wchar_t display_ch = ch;
+    attr_t display_attr = attr;
 
     if (state->markup_mode && markup_hint != MH_NONE) {
         switch (markup_hint) {
@@ -577,7 +578,7 @@ vt_put_char(struct vt_decoder_state *state, int row, int col, wchar_t ch, attr_t
 
     wchar_t vchar[2] = {display_ch, L'\0'};
     cchar_t cc;
-    setcchar(&cc, vchar, attr, display_color, 0);
+    setcchar(&cc, vchar, display_attr, display_color, 0);
     mvadd_wch(row, col, &cc);
 
     struct vt_decoder_cell *cell = &state->cells[row][col];

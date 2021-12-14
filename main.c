@@ -21,8 +21,10 @@
     "Error: %s (%d)\n\tat %s line %d\n", strerror(errno), errno, __FILE__, __LINE__)
 #define RCFILE ".vidtexrc"
 #define USAGE "Usage:\n"
+#define IO_BUFFER_LEN 2048
 #define BUFFER_LEN 1024
 #define MAX_AMBLE_LEN 10
+#define POLL_PERIOD_MS 200
 
 struct vt_rc_entry
 {
@@ -140,7 +142,7 @@ main(int argc, char *argv[])
     nodelay(stdscr, true);
     noecho();
 
-    uint8_t buffer[BUFFER_LEN];
+    uint8_t buffer[IO_BUFFER_LEN];
     struct pollfd poll_data[3] = {
         {.fd = session.socket_fd, .events = POLLIN},
         {.fd = STDIN_FILENO, .events = POLLIN},
@@ -148,11 +150,11 @@ main(int argc, char *argv[])
     };
 
     while (!(terminate_received || socket_closed)) {
-        int sz = poll(poll_data, 3, 100);
+        int sz = poll(poll_data, 3, POLL_PERIOD_MS);
 
         if (sz > 0) {
             if ((poll_data[0].revents & POLLIN) == POLLIN) {
-                sz = read(session.socket_fd, buffer, BUFFER_LEN);
+                sz = read(session.socket_fd, buffer, IO_BUFFER_LEN);
 
                 if (sz > 0) {
                     vt_decode(&session.decoder_state, buffer, sz);
