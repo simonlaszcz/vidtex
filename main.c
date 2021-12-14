@@ -591,10 +591,17 @@ vt_connect(struct vt_session_state *session)
         goto abend;
     }
 
-//TODO: use rc preamble. Always write 22
+    int preamble[MAX_AMBLE_LEN + 1] = {0};
+    preamble[0] = 22;
+    int preamble_len = 1;
 
-    int preamble[4] = {22, 255, 253, 3};
-    int sz = write(session->socket_fd, preamble, 4);
+    if (session->selected_rc != NULL && session->selected_rc->preamble_length > 0) {
+        int n = sizeof(int) * session->selected_rc->preamble_length;
+        memcpy(&preamble[1], session->selected_rc->preamble, n);
+        preamble_len += session->selected_rc->preamble_length;
+    }
+
+    int sz = write(session->socket_fd, preamble, preamble_len);
 
     if (sz < 1) {
         if (sz == 0) {
