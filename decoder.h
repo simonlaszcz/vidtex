@@ -110,6 +110,7 @@ struct vt_decoder_state
     bool force_cursor;
     bool markup_mode;
     bool mono_mode;
+    bool bold_mode;
     FILE *trace_file;
     struct vt_decoder_flags flags;
     struct vt_decoder_after_flags after_flags;

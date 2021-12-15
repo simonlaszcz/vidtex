@@ -495,8 +495,9 @@ vt_decoder_reset_after_flags(struct vt_decoder_after_flags *flags)
 static attr_t 
 vt_get_attr(struct vt_decoder_state *state)
 {
-    attr_t attr = 0;
+    attr_t attr = state->bold_mode ? A_BOLD : 0;
 
+//TODO: reveal
     if (state->flags.is_concealed) {
         attr |= A_PROTECT;
     }

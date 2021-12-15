@@ -56,7 +56,7 @@ static void vt_cleanup(struct vt_session_state *session);
 static int vt_get_rc(const char *dir, struct vt_rc_entry ***rc_data, int *rc_data_count);
 static char *vt_duplicate_token(char *token);
 static int vt_scan_array(char *token, int buffer[]);
-static void vt_free_rc(struct vt_rc_entry **rc_data, int rc_data_count);
+static void vt_free_rc(struct vt_rc_entry *rc_data[], int rc_data_count);
 static int vt_parse_options(int argc, char *argv[], struct vt_session_state *session);
 static struct vt_rc_entry *vt_show_rc_menu(struct vt_rc_entry **rc_data, int rc_data_count);
 static int vt_connect(struct vt_session_state *session);
@@ -259,17 +259,19 @@ vt_cleanup(struct vt_session_state *session)
         }
     }
 
+    if (session->selected_rc == NULL) {
+        //  Otherwise they'll be freed by vt_free_rc()
+        if (session->host != NULL) {
+            free(session->host);
+        }
+
+        if (session->port != NULL) {
+            free(session->port);
+        }
+    }
+
     if (session->rc_data_count > 0) {
         vt_free_rc(session->rc_data, session->rc_data_count);
-    }
-
-    //  These may have been freed via session->rc_data
-    if (session->host != NULL) {
-        free(session->host);
-    }
-
-    if (session->port != NULL) {
-        free(session->port);
     }
 
     if (session->cwd != NULL) {
@@ -425,9 +427,21 @@ vt_scan_array(char *token, int buffer[])
 } 
 
 static void 
-vt_free_rc(struct vt_rc_entry **rc, int count)
+vt_free_rc(struct vt_rc_entry *rc[], int count)
 {
-//TODO
+    for (int i = 0; i < count; ++i) {
+        struct vt_rc_entry *e = rc[i];
+
+        free(e->name);
+        free(e->host);
+        free(e->port);
+
+        e->name = NULL;
+        e->host = NULL;
+        e->port = NULL;
+    }
+
+    free(rc);
 }
 
 static int
@@ -444,6 +458,7 @@ vt_parse_options(int argc, char *argv[], struct vt_session_state *session)
         {"markup", no_argument, 0, 0},
         {"mono", no_argument, 0, 0},
         {"trace", required_argument, 0, 0},
+        {"bold", no_argument, 0, 0},
         {0, 0, 0, 0}
     };
 
@@ -504,6 +519,9 @@ vt_parse_options(int argc, char *argv[], struct vt_session_state *session)
                     goto abend;
                 }
                 setbuf(session->decoder_state.trace_file, NULL);
+                break;
+            case 8:
+                session->decoder_state.bold_mode = true;
                 break;
             }
             break;
@@ -603,12 +621,12 @@ vt_connect(struct vt_session_state *session)
 
     int sz = write(session->socket_fd, preamble, preamble_len);
 
-    if (sz < 1) {
-        if (sz == 0) {
-            fprintf(stderr, "Failed to write preamble\n");
-        }
-        else if (sz == -1) {
+    if (sz != preamble_len) {
+        if (sz == -1) {
             vt_perror();
+        }
+        else {
+            fprintf(stderr, "Failed to write preamble\n");
         }
         goto abend;
     }
