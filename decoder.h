@@ -103,10 +103,12 @@ struct vt_decoder_cell
     wchar_t character;
     short color_pair;
     bool has_flash_attribute;
+    bool has_concealed_attribute;
 };
 
 struct vt_decoder_state
 {
+    WINDOW *win;
     bool force_cursor;
     bool markup_mode;
     bool mono_mode;
@@ -124,11 +126,13 @@ struct vt_decoder_state
     //  Store the characters written to the first row so we can check for the page number
     wchar_t header_row[MAX_COLS];
     bool screen_flash_state;
+    bool screen_revealed_state;
     struct vt_decoder_cell cells[MAX_ROWS][MAX_COLS];
 };
 
 void vt_decoder_init(struct vt_decoder_state *state);
 void vt_decode(struct vt_decoder_state *state, uint8_t *buffer, int count);
 void vt_toggle_flash(struct vt_decoder_state *state);
+void vt_toggle_reveal(struct vt_decoder_state *state);
 
 #endif

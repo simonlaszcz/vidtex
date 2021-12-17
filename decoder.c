@@ -67,8 +67,8 @@ vt_decode(struct vt_decoder_state *state, uint8_t *buffer, int count)
                 vt_trace(state, "BS: row=%d, col=%d\n", state->row, state->col);
 
                 if (state->force_cursor) {
-                    move(state->row, state->col);
-                    refresh();
+                    wmove(state->win, state->row, state->col);
+                    wrefresh(state->win);
                 }
                 continue;
             case 9:     //  h-tab
@@ -86,8 +86,8 @@ vt_decode(struct vt_decoder_state *state, uint8_t *buffer, int count)
                 vt_trace(state, "h-tab: row=%d, col=%d\n", state->row, state->col);
 
                 if (state->force_cursor) {
-                    move(state->row, state->col);
-                    refresh();
+                    wmove(state->win, state->row, state->col);
+                    wrefresh(state->win);
                 }
                 continue;
             case 10:    //  LF (end of row)
@@ -95,8 +95,8 @@ vt_decode(struct vt_decoder_state *state, uint8_t *buffer, int count)
                 vt_trace(state, "LF: row=%d, col=%d\n", state->row, state->col);
 
                 if (state->force_cursor) {
-                    move(state->row, state->col);
-                    refresh();
+                    wmove(state->win, state->row, state->col);
+                    wrefresh(state->win);
                 }
                 continue;
             case 11:    //  v-tab
@@ -109,8 +109,8 @@ vt_decode(struct vt_decoder_state *state, uint8_t *buffer, int count)
                 vt_trace(state, "v-tab: row=%d, col=%d\n", state->row, state->col);
 
                 if (state->force_cursor) {
-                    move(state->row, state->col);
-                    refresh();
+                    wmove(state->win, state->row, state->col);
+                    wrefresh(state->win);
                 }
                 continue;
             case 12:
@@ -119,8 +119,8 @@ vt_decode(struct vt_decoder_state *state, uint8_t *buffer, int count)
                 vt_trace(state, "FF: row=%d, col=%d\n", state->row, state->col);
 
                 if (state->force_cursor) {
-                    move(state->row, state->col);
-                    refresh();
+                    wmove(state->win, state->row, state->col);
+                    wrefresh(state->win);
                 }
                 continue;
             case 13:    //  CR
@@ -129,8 +129,8 @@ vt_decode(struct vt_decoder_state *state, uint8_t *buffer, int count)
                 vt_trace(state, "CR: row=%d, col=%d\n", state->row, state->col);
 
                 if (state->force_cursor) {
-                    move(state->row, state->col);
-                    refresh();
+                    wmove(state->win, state->row, state->col);
+                    wrefresh(state->win);
                 }
                 continue;
             case 17:    //  DC1 - cursor on
@@ -149,8 +149,8 @@ vt_decode(struct vt_decoder_state *state, uint8_t *buffer, int count)
                 vt_trace(state, "RS: row=%d, col=%d\n", state->row, state->col);
 
                 if (state->force_cursor) {
-                    move(state->row, state->col);
-                    refresh();
+                    wmove(state->win, state->row, state->col);
+                    wrefresh(state->win);
                 }
                 continue;
         }
@@ -299,14 +299,14 @@ vt_decode(struct vt_decoder_state *state, uint8_t *buffer, int count)
             vt_decoder_next_row(state);
         }
 
-        move(state->row, state->col);
-        refresh();
+        wmove(state->win, state->row, state->col);
+        wrefresh(state->win);
     }
 
     //  Move the cursor to the last character displayed
     curs_set(state->force_cursor || state->flags.is_cursor_on);
-    move(state->row, state->col);
-    refresh();
+    wmove(state->win, state->row, state->col);
+    wrefresh(state->win);
 }
 
 void 
@@ -314,6 +314,7 @@ vt_toggle_flash(struct vt_decoder_state *state)
 {
     state->screen_flash_state = !state->screen_flash_state;
 
+    //  Find spans of cells with matching attributes
     for (int r = 0; r < MAX_ROWS; ++r) {
         struct vt_decoder_cell *row = state->cells[r];
         int c = 0;
@@ -339,13 +340,58 @@ vt_toggle_flash(struct vt_decoder_state *state)
                 }
 
                 if (state->screen_flash_state) {
+                    //  Reverse fg and bg
                     short fg, bg;
                     pair_content(start_color, &fg, &bg);
                     start_color = vt_get_color_pair_number(bg, fg);
                 }
 
-                mvchgat(r, start_c, span, start_attr, start_color, NULL);
-                refresh();
+                mvwchgat(state->win, r, start_c, span, start_attr, start_color, NULL);
+                wrefresh(state->win);
+            }
+        }
+    }
+}
+
+void 
+vt_toggle_reveal(struct vt_decoder_state *state)
+{
+    state->screen_revealed_state = !state->screen_revealed_state;
+
+    //  Find spans of cells with matching attributes
+    for (int r = 0; r < MAX_ROWS; ++r) {
+        struct vt_decoder_cell *row = state->cells[r];
+        int c = 0;
+
+        while (c < MAX_COLS) {
+            while (c < MAX_COLS && !row[c].has_concealed_attribute) {
+                ++c;
+            }
+
+            if (c < MAX_COLS) {
+                int start_c = c;
+                int span = 1;
+                attr_t start_attr = row[c].attribute;
+                short start_color = row[c].color_pair;
+                ++c;
+
+                while (c < MAX_COLS 
+                    && row[c].has_concealed_attribute 
+                    && row[c].color_pair == start_color
+                    && row[c].attribute == start_attr) {
+                    ++c;
+                    ++span;
+                }
+
+                if (!state->screen_revealed_state) {
+                    //  Hide the fg if not revealed
+                    short fg, bg;
+                    pair_content(start_color, &fg, &bg);
+                    start_color = vt_get_color_pair_number(bg, bg);
+                }
+
+                mvwchgat(state->win, r, start_c, span, start_attr, start_color, NULL);
+                wrefresh(state->win);
             }
         }
     }
@@ -468,7 +514,7 @@ vt_decoder_reset_flags(struct vt_decoder_flags *flags)
 {
     flags->bg_color = BLACK;
     flags->alpha_fg_color = WHITE;
-    //flags->mosaic_fg_color = WHITE;
+    flags->mosaic_fg_color = WHITE;
     flags->is_alpha = true;
     flags->is_flashing = false;
     flags->is_escaped = false;
@@ -496,11 +542,6 @@ static attr_t
 vt_get_attr(struct vt_decoder_state *state)
 {
     attr_t attr = state->bold_mode ? A_BOLD : 0;
-
-//TODO: reveal
-    if (state->flags.is_concealed) {
-        attr |= A_PROTECT;
-    }
 
     if (state->flags.is_double_height) {
         attr |= DBL_HEIGHT_ATTR;
@@ -580,18 +621,19 @@ vt_put_char(struct vt_decoder_state *state, int row, int col, wchar_t ch, attr_t
     wchar_t vchar[2] = {display_ch, L'\0'};
     cchar_t cc;
     setcchar(&cc, vchar, display_attr, display_color, 0);
-    mvadd_wch(row, col, &cc);
+    mvwadd_wch(state->win, row, col, &cc);
 
     struct vt_decoder_cell *cell = &state->cells[row][col];
     cell->attribute = attr;
     cell->character = ch;
     cell->color_pair = color;
     cell->has_flash_attribute = state->flags.is_flashing;
+    cell->has_concealed_attribute = state->flags.is_concealed;
 
     if (markup_hint != MH_MASK) {
         vt_trace(state, 
-            "putchar: char='%lc', code=%d, attr=%d, color=%d, flashing=%d, row=%d, col=%d\n", 
-            ch, ch, attr, color, state->flags.is_flashing, row, col);
+            "putchar: char='%lc', code=%d, attr=%d, color=%d, flashing=%d, concealed=%d, row=%d, col=%d\n", 
+            ch, ch, attr, color, state->flags.is_flashing, state->flags.is_concealed, row, col);
     }
 }
 

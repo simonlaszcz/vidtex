@@ -19,12 +19,13 @@
 
 #define vt_perror() fprintf(stderr, \
     "Error: %s (%d)\n\tat %s line %d\n", strerror(errno), errno, __FILE__, __LINE__)
+#define vt_is_ctrl(x) ((x) & 0x1F)
 #define RCFILE ".vidtexrc"
 #define USAGE "Usage:\n"
 #define IO_BUFFER_LEN 2048
 #define BUFFER_LEN 1024
 #define MAX_AMBLE_LEN 10
-#define POLL_PERIOD_MS 200
+#define POLL_PERIOD_MS 500
 
 struct vt_rc_entry
 {
@@ -138,9 +139,11 @@ main(int argc, char *argv[])
     setlocale(LC_ALL, "");
     initscr();
     vt_decoder_init(&session.decoder_state);
+    session.decoder_state.win = newwin(MAX_ROWS + 1, MAX_COLS + 1, 1, 1);
     cbreak();
-    nodelay(stdscr, true);
+    nodelay(session.decoder_state.win, true);
     noecho();
+    keypad(session.decoder_state.win, true);
 
     uint8_t buffer[IO_BUFFER_LEN];
     struct pollfd poll_data[3] = {
@@ -168,12 +171,19 @@ main(int argc, char *argv[])
             if ((poll_data[1].revents & POLLIN) == POLLIN) {
                 int ch = vt_transform_input(getch());
 
-                if (ch != EOF) {
+                switch (ch) {
+                case EOF:
+                    break;
+                case vt_is_ctrl('r'):
+                    vt_toggle_reveal(&session.decoder_state);
+                    break;
+                default:
                     sz = write(session.socket_fd, &ch, 1);
 
                     if (sz < 1) {
                         socket_closed = true;
                     }
+                    break;
                 }
             }
 

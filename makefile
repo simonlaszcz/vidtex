@@ -1,2 +1,13 @@
-vidtex: main.c decoder.h decoder.c bedstead.h bedstead.c
-	gcc -Wall -Werror -lncursesw -g -o vidtex main.c decoder.c bedstead.c
+SHELL=/bin/bash
+CC=gcc
+HEADERS=decoder.h bedstead.h
+SRC=main.c decoder.c bedstead.c
+FLAGS=-g
+
+dev: vidtex tags
+
+vidtex: $(HEADERS) $(SRC)
+	$(CC) $(FLAGS) -Wall -Werror -lncursesw -o vidtex $(SRC)
+
+tags: $(HEADERS) $(SRC)
+	ctags $(HEADERS) $(SRC)
