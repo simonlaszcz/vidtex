@@ -33,15 +33,6 @@ enum vt_decoder_tristate
     TRI_UNDEF = -1
 };
 
-enum vt_decoder_markup_hint
-{
-    MH_NONE = 0,
-    MH_FILL_END = 1,
-    MH_MOSAIC_HELD = 2,
-    MH_MASK = 3,
-    MH_LOWER_ROW = 4
-};
-
 struct vt_decoder_flags
 {
     //  Bg colour. The 'black bg' and 'new bg' commands are Set-At.
@@ -97,20 +88,27 @@ struct vt_decoder_after_flags
     enum vt_decoder_tristate is_double_height;
 };
 
+struct vt_attr
+{
+    //  Curses attr
+    attr_t attr;
+    //  Curses color pair
+    short color_pair;
+    //  Other flags
+    bool has_flash;
+    bool has_concealed;
+};
+
 struct vt_decoder_cell
 {
-    attr_t attribute;
+    struct vt_attr attr;
     wchar_t character;
-    short color_pair;
-    bool has_flash_attribute;
-    bool has_concealed_attribute;
 };
 
 struct vt_decoder_state
 {
     WINDOW *win;
     bool force_cursor;
-    bool markup_mode;
     bool mono_mode;
     bool bold_mode;
     FILE *trace_file;
@@ -119,7 +117,7 @@ struct vt_decoder_state
     int row;
     int col;
     //  Set when we need to ignore double height row 2 in the input stream
-    int double_height_lower_row;
+    int dheight_low_row;
     wchar_t last_character;
     wchar_t frame_buffer[FRAME_BUFFER_MAX];
     int frame_buffer_offset;

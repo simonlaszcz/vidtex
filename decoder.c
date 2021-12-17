@@ -8,13 +8,12 @@ static void vt_decoder_new_frame(struct vt_decoder_state *state);
 static void vt_decoder_next_row(struct vt_decoder_state *state);
 static void vt_decoder_fill_end(struct vt_decoder_state *state);
 static void vt_decoder_reset_flags(struct vt_decoder_flags *flags);
-static attr_t vt_get_attr(struct vt_decoder_state *state);
-static short vt_get_color(struct vt_decoder_state *state);
+static void vt_set_attr(struct vt_decoder_state *state, struct vt_attr *attr);
 static short vt_get_color_pair_number(enum vt_decoder_color fg, enum vt_decoder_color bg);
 static void vt_decoder_apply_after_flags(struct vt_decoder_after_flags *after, struct vt_decoder_flags *flags);
 static void vt_decoder_reset_after_flags(struct vt_decoder_after_flags *flags);
 static wchar_t vt_get_char_code(struct vt_decoder_state *state, int row_code, int col_code);
-static void vt_put_char(struct vt_decoder_state *state, int row, int col, wchar_t ch, attr_t attr, short color, enum vt_decoder_markup_hint markup_hint);
+static void vt_put_char(struct vt_decoder_state *state, int row, int col, wchar_t ch, struct vt_attr *attr, bool trace);
 static void vt_init_colors();
 static void vt_trace(struct vt_decoder_state *state, char *format, ...);
 
@@ -50,109 +49,109 @@ vt_decode(struct vt_decoder_state *state, uint8_t *buffer, int count)
         //  ASCII control codes (codes < 32)
         //  Rows are either 40 chars long exactly or less than 40 chars and terminated by CRLF or CR or LF
         switch (b) {
-            case 0:     //  NULL
-                continue;
-            case 8:     //  Backspace
-                --state->col;
+        case 0:     //  NULL
+            continue;
+        case 8:     //  Backspace
+            --state->col;
 
-                if (state->col < 0) {
-                    state->col = MAX_COLS - 1;
-                    --state->row;
-
-                    if (state->row < 0) {
-                        state->row = MAX_ROWS - 1;
-                    }
-                }
-
-                vt_trace(state, "BS: row=%d, col=%d\n", state->row, state->col);
-
-                if (state->force_cursor) {
-                    wmove(state->win, state->row, state->col);
-                    wrefresh(state->win);
-                }
-                continue;
-            case 9:     //  h-tab
-                ++state->col;
-
-                if (state->col >= MAX_COLS) {
-                    state->col = 0;
-                    ++state->row;
-
-                    if (state->row >= MAX_ROWS) {
-                        state->row = 0;
-                    }
-                }
-
-                vt_trace(state, "h-tab: row=%d, col=%d\n", state->row, state->col);
-
-                if (state->force_cursor) {
-                    wmove(state->win, state->row, state->col);
-                    wrefresh(state->win);
-                }
-                continue;
-            case 10:    //  LF (end of row)
-                vt_decoder_next_row(state);
-                vt_trace(state, "LF: row=%d, col=%d\n", state->row, state->col);
-
-                if (state->force_cursor) {
-                    wmove(state->win, state->row, state->col);
-                    wrefresh(state->win);
-                }
-                continue;
-            case 11:    //  v-tab
+            if (state->col < 0) {
+                state->col = MAX_COLS - 1;
                 --state->row;
 
                 if (state->row < 0) {
                     state->row = MAX_ROWS - 1;
                 }
+            }
 
-                vt_trace(state, "v-tab: row=%d, col=%d\n", state->row, state->col);
+            vt_trace(state, "BS: row=%d, col=%d\n", state->row, state->col);
 
-                if (state->force_cursor) {
-                    wmove(state->win, state->row, state->col);
-                    wrefresh(state->win);
-                }
-                continue;
-            case 12:
-                //  FF (new frame/clear screen)
-                vt_decoder_new_frame(state);
-                vt_trace(state, "FF: row=%d, col=%d\n", state->row, state->col);
+            if (state->force_cursor) {
+                wmove(state->win, state->row, state->col);
+                wrefresh(state->win);
+            }
+            continue;
+        case 9:     //  h-tab
+            ++state->col;
 
-                if (state->force_cursor) {
-                    wmove(state->win, state->row, state->col);
-                    wrefresh(state->win);
-                }
-                continue;
-            case 13:    //  CR
-                vt_decoder_fill_end(state);
+            if (state->col >= MAX_COLS) {
                 state->col = 0;
-                vt_trace(state, "CR: row=%d, col=%d\n", state->row, state->col);
+                ++state->row;
 
-                if (state->force_cursor) {
-                    wmove(state->win, state->row, state->col);
-                    wrefresh(state->win);
+                if (state->row >= MAX_ROWS) {
+                    state->row = 0;
                 }
-                continue;
-            case 17:    //  DC1 - cursor on
-                state->flags.is_cursor_on = true;
-                vt_trace(state, "DC1\n");
-                continue;
-            case 20:    //  DC4 - cursor off
-                state->flags.is_cursor_on = false;
-                curs_set(state->force_cursor);
-                vt_trace(state, "DC4\n");
-                continue;
-            case 30:    //  RS  - back to origin
-                vt_decoder_fill_end(state);
-                state->col = 0;
-                state->row = 0;
-                vt_trace(state, "RS: row=%d, col=%d\n", state->row, state->col);
+            }
 
-                if (state->force_cursor) {
-                    wmove(state->win, state->row, state->col);
-                    wrefresh(state->win);
-                }
-                continue;
+            vt_trace(state, "h-tab: row=%d, col=%d\n", state->row, state->col);
+
+            if (state->force_cursor) {
+                wmove(state->win, state->row, state->col);
+                wrefresh(state->win);
+            }
+            continue;
+        case 10:    //  LF (end of row)
+            vt_decoder_next_row(state);
+            vt_trace(state, "LF: row=%d, col=%d\n", state->row, state->col);
+
+            if (state->force_cursor) {
+                wmove(state->win, state->row, state->col);
+                wrefresh(state->win);
+            }
+            continue;
+        case 11:    //  v-tab
+            --state->row;
+
+            if (state->row < 0) {
+                state->row = MAX_ROWS - 1;
+            }
+
+            vt_trace(state, "v-tab: row=%d, col=%d\n", state->row, state->col);
+
+            if (state->force_cursor) {
+                wmove(state->win, state->row, state->col);
+                wrefresh(state->win);
+            }
+            continue;
+        case 12:
+            //  FF (new frame/clear screen)
+            vt_decoder_new_frame(state);
+            vt_trace(state, "FF: row=%d, col=%d\n", state->row, state->col);
+
+            if (state->force_cursor) {
+                wmove(state->win, state->row, state->col);
+                wrefresh(state->win);
+            }
+            continue;
+        case 13:    //  CR
+            vt_decoder_fill_end(state);
+            state->col = 0;
+            vt_trace(state, "CR: row=%d, col=%d\n", state->row, state->col);
+
+            if (state->force_cursor) {
+                wmove(state->win, state->row, state->col);
+                wrefresh(state->win);
+            }
+            continue;
+        case 17:    //  DC1 - cursor on
+            state->flags.is_cursor_on = true;
+            vt_trace(state, "DC1\n");
+            continue;
+        case 20:    //  DC4 - cursor off
+            state->flags.is_cursor_on = false;
+            curs_set(state->force_cursor);
+            vt_trace(state, "DC4\n");
+            continue;
+        case 30:    //  RS  - back to origin
+            vt_decoder_fill_end(state);
+            state->col = 0;
+            state->row = 0;
+            vt_trace(state, "RS: row=%d, col=%d\n", state->row, state->col);
+
+            if (state->force_cursor) {
+                wmove(state->win, state->row, state->col);
+                wrefresh(state->win);
+            }
+            continue;
         }
 
         int row_code = (b & 0xF);
@@ -166,105 +165,111 @@ vt_decode(struct vt_decoder_state *state, uint8_t *buffer, int count)
 
         if (col_code == 0) {
             switch (row_code) {
-                case 0:     //  NUL (alpha black at level 2.5+)
-                case 14:    //  Shift Out
-                case 15:    //  Shift In
-                    break;
-                case 8: //  Flash
-                    state->after_flags.is_flashing = true;
-                    vt_trace(state, "set-after-flash=true\n");
-                    break;
-                case 9: //  Steady
-                    state->flags.is_flashing = false;
-                    vt_trace(state, "flash=false\n");
-                    break;
-                case 10:    //  end box
-                    state->after_flags.is_boxing = false;
-                    vt_trace(state, "boxing=false\n");
-                    break;
-                case 11:    //  start box 
-                    state->after_flags.is_boxing = true;
-                    vt_trace(state, "boxing=true\n");
-                    break;
-                case 12:    //  normal height
-                    state->flags.is_double_height = false;
-                    state->flags.held_mosaic = SPACE;
-                    vt_trace(state, "double-height=false, held-mosaic=' '\n");
-                    break;
-                case 13:    //  double height (but not on last row)
-                    if (state->row < (MAX_ROWS - 2)) {
-                        state->after_flags.is_double_height = true;
-                        vt_trace(state, "set-after-double-height=true\n");
-                    }
-                    break;
-                default:
-                    state->after_flags.alpha_fg_color = row_code;
-                    vt_trace(state, "set-after-alpha-fg=%d\n", row_code);
+            case 0:     //  NUL (alpha black at level 2.5+)
+            case 14:    //  Shift Out
+            case 15:    //  Shift In
+                break;
+            case 8: //  Flash
+                state->after_flags.is_flashing = true;
+                vt_trace(state, "set-after-flash=true\n");
+                break;
+            case 9: //  Steady
+                state->flags.is_flashing = false;
+                vt_trace(state, "flash=false\n");
+                break;
+            case 10:    //  end box
+                state->after_flags.is_boxing = false;
+                vt_trace(state, "boxing=false\n");
+                break;
+            case 11:    //  start box 
+                state->after_flags.is_boxing = true;
+                vt_trace(state, "boxing=true\n");
+                break;
+            case 12:    //  normal height
+                state->flags.is_double_height = false;
+                state->flags.held_mosaic = SPACE;
+                vt_trace(state, "double-height=false, held-mosaic=' '\n");
+                break;
+            case 13:    //  double height (but not on last row)
+                if (state->row < (MAX_ROWS - 2)) {
+                    state->after_flags.is_double_height = true;
+                    vt_trace(state, "set-after-double-height=true\n");
+                }
+                break;
+            default:
+                state->after_flags.alpha_fg_color = row_code;
+                vt_trace(state, "set-after-alpha-fg=%d\n", row_code);
+                break;
             }
         }
         else if (col_code == 1) {
             switch (row_code) {
-                case 0:     //  Data Link Escape (graphics black at level 2.5+)
-                    vt_trace(state, "DLE\n");
-                    break;
-                case 8:     //  conceal display
-                    state->flags.is_concealed = true;
-                    vt_trace(state, "is-concealed=true\n");
-                    break;
-                case 9:
-                    state->flags.is_contiguous = true;
-                    vt_trace(state, "is-contiguous=true\n");
-                    break;
-                case 10:
-                    state->flags.is_contiguous = false;
-                    vt_trace(state, "is-contiguous=false\n");
-                    break;
-                case 11:    //  escape - do not print
-                    state->flags.is_escaped = true;
-                    vt_trace(state, "is-escaped=true\n");
-                    continue;
-                case 12:    //  black bg
-                    state->flags.bg_color = BLACK;
-                    vt_trace(state, "bg-color=BLACK\n");
-                    break;
-                case 13:    //  new bg, i.e. use the fg for the bg
-                    state->flags.bg_color = state->flags.is_alpha ? 
-                        state->flags.alpha_fg_color : state->flags.mosaic_fg_color;
-                    vt_trace(state, "bg-color=%d\n", state->flags.bg_color);
-                    break;
-                case 14:    //  hold graphics
-                    state->flags.is_mosaic_held = true;
-                    vt_trace(state, "is-mosaic-held=true\n");
-                    break;
-                case 15:    //  release graphics
-                    state->after_flags.is_mosaic_held = false;
-                    vt_trace(state, "set-after-is-mosaic-held=false\n");
-                    break;
-                default:
-                    state->after_flags.mosaic_fg_color = row_code;
-                    vt_trace(state, "set-after-mosaic-fg=%d\n", state->after_flags.mosaic_fg_color);
+            case 0:     //  Data Link Escape (graphics black at level 2.5+)
+                vt_trace(state, "DLE\n");
+                break;
+            case 8:     //  conceal display
+                state->flags.is_concealed = true;
+                vt_trace(state, "is-concealed=true\n");
+                break;
+            case 9:
+                state->flags.is_contiguous = true;
+                vt_trace(state, "is-contiguous=true\n");
+                break;
+            case 10:
+                state->flags.is_contiguous = false;
+                vt_trace(state, "is-contiguous=false\n");
+                break;
+            case 11:    //  escape - do not print
+                state->flags.is_escaped = true;
+                vt_trace(state, "is-escaped=true\n");
+                continue;
+            case 12:    //  black bg
+                state->flags.bg_color = BLACK;
+                vt_trace(state, "bg-color=BLACK\n");
+                break;
+            case 13:    //  new bg, i.e. use the fg for the bg
+                state->flags.bg_color = state->flags.is_alpha ? 
+                    state->flags.alpha_fg_color : state->flags.mosaic_fg_color;
+                vt_trace(state, "bg-color=%d\n", state->flags.bg_color);
+                break;
+            case 14:    //  hold graphics
+                state->flags.is_mosaic_held = true;
+                vt_trace(state, "is-mosaic-held=true\n");
+                break;
+            case 15:    //  release graphics
+                state->after_flags.is_mosaic_held = false;
+                vt_trace(state, "set-after-is-mosaic-held=false\n");
+                break;
+            default:
+                state->after_flags.mosaic_fg_color = row_code;
+                vt_trace(state, "set-after-mosaic-fg=%d\n", state->after_flags.mosaic_fg_color);
+                break;
             }
         }
 
-        if (state->row != state->double_height_lower_row) {
-            attr_t attr = vt_get_attr(state);
-            short color = vt_get_color(state);
+        if (state->row != state->dheight_low_row) {
+            struct vt_attr attr;
+            vt_set_attr(state, &attr);
 
             //  Row 2 of double height text has no fg data
             //  When processing the next row, we need to ensure that we don't overwrite it
             if (state->flags.is_double_height) {
-                short color_below = state->cells[state->double_height_lower_row][state->col].color_pair;
+                struct vt_decoder_cell *cell_below = 
+                    &state->cells[state->dheight_low_row][state->col];
                 short fg, bg;
-                pair_content(color_below, &fg, &bg);
-                color_below = vt_get_color_pair_number(fg, state->flags.bg_color);
-                vt_put_char(state, state->double_height_lower_row, state->col, SPACE, 0, color_below, MH_LOWER_ROW);
+                pair_content(cell_below->attr.color_pair, &fg, &bg);
+
+                struct vt_attr attr_below;
+                memcpy(&attr_below, &attr, sizeof(struct vt_attr));
+                attr_below.color_pair = 
+                    vt_get_color_pair_number(fg, state->flags.bg_color);
+
+                vt_put_char(state, state->dheight_low_row, state->col, SPACE, &attr_below, false);
             }
 
             if (col_code == 0 || col_code == 1) {
                 wchar_t ch = state->flags.is_mosaic_held ? state->flags.held_mosaic : SPACE;
-                enum vt_decoder_markup_hint hint = 
-                    state->flags.is_mosaic_held ? MH_MOSAIC_HELD : MH_NONE;
-                vt_put_char(state, state->row, state->col, ch, attr, color, hint);
+                vt_put_char(state, state->row, state->col, ch, &attr, state->flags.is_mosaic_held);
 
                 if (state->row == 0) {
                     state->header_row[state->col] = SPACE;
@@ -272,7 +277,7 @@ vt_decode(struct vt_decoder_state *state, uint8_t *buffer, int count)
             }
             else {
                 state->last_character = vt_get_char_code(state, row_code, col_code);
-                vt_put_char(state, state->row, state->col, state->last_character, attr, color, MH_NONE);
+                vt_put_char(state, state->row, state->col, state->last_character, &attr, false);
 
                 if (!state->flags.is_alpha) {
                     state->flags.held_mosaic = state->last_character;
@@ -288,7 +293,7 @@ vt_decode(struct vt_decoder_state *state, uint8_t *buffer, int count)
         vt_decoder_apply_after_flags(&state->after_flags, &state->flags);
 
         if (state->after_flags.is_double_height == TRI_TRUE) {
-            state->double_height_lower_row = state->row + 1;
+            state->dheight_low_row = state->row + 1;
         }
 
         vt_decoder_reset_after_flags(&state->after_flags);
@@ -320,23 +325,30 @@ vt_toggle_flash(struct vt_decoder_state *state)
         int c = 0;
 
         while (c < MAX_COLS) {
-            while (c < MAX_COLS && !row[c].has_flash_attribute) {
+            while (c < MAX_COLS && !row[c].attr.has_flash) {
                 ++c;
             }
 
             if (c < MAX_COLS) {
                 int start_c = c;
                 int span = 1;
-                attr_t start_attr = row[c].attribute;
-                short start_color = row[c].color_pair;
+                attr_t start_attr = row[c].attr.attr;
+                short start_color = row[c].attr.color_pair;
+                bool start_concealed = row[c].attr.has_concealed;
                 ++c;
 
                 while (c < MAX_COLS 
-                    && row[c].has_flash_attribute 
-                    && row[c].color_pair == start_color
-                    && row[c].attribute == start_attr) {
+                    && row[c].attr.has_flash 
+                    && row[c].attr.has_concealed == start_concealed
+                    && row[c].attr.color_pair == start_color
+                    && row[c].attr.attr == start_attr) {
                     ++c;
                     ++span;
+                }
+
+                //  Don't flash a span if it's hidden
+                if (start_concealed && !state->screen_revealed_state) {
+                    continue;
                 }
 
                 if (state->screen_flash_state) {
@@ -358,43 +370,17 @@ vt_toggle_reveal(struct vt_decoder_state *state)
 {
     state->screen_revealed_state = !state->screen_revealed_state;
 
-    //  Find spans of cells with matching attributes
     for (int r = 0; r < MAX_ROWS; ++r) {
-        struct vt_decoder_cell *row = state->cells[r];
-        int c = 0;
+        for (int c = 0; c < MAX_COLS; ++c) {
+            struct vt_decoder_cell *cell = &state->cells[r][c];
 
-        while (c < MAX_COLS) {
-            while (c < MAX_COLS && !row[c].has_concealed_attribute) {
-                ++c;
-            }
-
-            if (c < MAX_COLS) {
-                int start_c = c;
-                int span = 1;
-                attr_t start_attr = row[c].attribute;
-                short start_color = row[c].color_pair;
-                ++c;
-
-                while (c < MAX_COLS 
-                    && row[c].has_concealed_attribute 
-                    && row[c].color_pair == start_color
-                    && row[c].attribute == start_attr) {
-                    ++c;
-                    ++span;
-                }
-
-                if (!state->screen_revealed_state) {
-                    //  Hide the fg if not revealed
-                    short fg, bg;
-                    pair_content(start_color, &fg, &bg);
-                    start_color = vt_get_color_pair_number(bg, bg);
-                }
-
-                mvwchgat(state->win, r, start_c, span, start_attr, start_color, NULL);
-                wrefresh(state->win);
+            if (cell->attr.has_concealed) {
+                vt_put_char(state, r, c, cell->character, &cell->attr, false);
             }
         }
     }
+
+    wrefresh(state->win);
 }
 
 /*
@@ -424,7 +410,7 @@ vt_decoder_new_frame(struct vt_decoder_state *state)
 {
     state->row = 0;
     state->col = 0;
-    state->double_height_lower_row = -1;
+    state->dheight_low_row = -1;
     state->frame_buffer_offset = 0;
     vt_decoder_reset_flags(&state->flags);
     vt_decoder_reset_after_flags(&state->after_flags);
@@ -434,10 +420,13 @@ vt_decoder_new_frame(struct vt_decoder_state *state)
         state->header_row[i] = SPACE;
     }
 
+    struct vt_attr attr;
+    memset(&attr, 0, sizeof(struct vt_attr));
+
     for (int r = 0; r < MAX_ROWS; ++r) {
         for (int c = 0; c < MAX_COLS; ++c) {
             state->cells[r][c].character = SPACE;
-            vt_put_char(state, r, c, SPACE, 0, 0, MH_MASK);
+            vt_put_char(state, r, c, SPACE, &attr, false);
         }
     }
 }
@@ -462,12 +451,14 @@ vt_decoder_fill_end(struct vt_decoder_state *state)
 {
     if (state->col > 0) {
         struct vt_decoder_cell *prev = &state->cells[state->row][state->col - 1];
-        attr_t attr = prev->attribute & ATTRS_IGNORED_TO_EOL_MASK;
-        short color = prev->color_pair;
+        struct vt_attr attr;
+        memset(&attr, 0, sizeof(struct vt_attr));
+        attr.attr = prev->attr.attr & ATTRS_IGNORED_TO_EOL_MASK;
+        attr.color_pair = prev->attr.color_pair;
 
         for (int col = state->col; col < MAX_COLS; ++col) {
             wchar_t ch = state->cells[state->row][col].character;
-            vt_put_char(state, state->row, col, ch, attr, color, MH_FILL_END);
+            vt_put_char(state, state->row, col, ch, &attr, true);
         }
     }
 }
@@ -538,29 +529,23 @@ vt_decoder_reset_after_flags(struct vt_decoder_after_flags *flags)
     flags->is_double_height = TRI_UNDEF;
 }
 
-static attr_t 
-vt_get_attr(struct vt_decoder_state *state)
+static void 
+vt_set_attr(struct vt_decoder_state *state, struct vt_attr *attr)
 {
-    attr_t attr = state->bold_mode ? A_BOLD : 0;
+    memset(attr, 0, sizeof(struct vt_attr));
+    attr->attr = state->bold_mode ? A_BOLD : 0;
+    attr->has_flash = state->flags.is_flashing;
+    attr->has_concealed = state->flags.is_concealed;
 
     if (state->flags.is_double_height) {
-        attr |= DBL_HEIGHT_ATTR;
+        attr->attr |= DBL_HEIGHT_ATTR;
     }
 
-    return attr;
-}
-
-static short 
-vt_get_color(struct vt_decoder_state *state)
-{
-    if (!has_colors()) {
-        return 0;
+    if (has_colors()) {
+        enum vt_decoder_color fg = state->flags.is_alpha ? 
+            state->flags.alpha_fg_color : state->flags.mosaic_fg_color;
+        attr->color_pair = vt_get_color_pair_number(fg, state->flags.bg_color);
     }
-
-    enum vt_decoder_color fg = state->flags.is_alpha ? 
-        state->flags.alpha_fg_color : state->flags.mosaic_fg_color;
-
-    return vt_get_color_pair_number(fg, state->flags.bg_color);
 }
 
 static short 
@@ -592,30 +577,15 @@ vt_get_char_code(struct vt_decoder_state *state, int row_code, int col_code)
 }
 
 static void
-vt_put_char(struct vt_decoder_state *state, int row, int col, wchar_t ch, attr_t attr, short color, enum vt_decoder_markup_hint markup_hint)
+vt_put_char(struct vt_decoder_state *state, int row, int col, wchar_t ch, struct vt_attr *attr, bool trace)
 {
-    short display_color = state->mono_mode ? 0 : color;
+    struct vt_decoder_cell *cell = &state->cells[row][col];
+    short display_color = state->mono_mode ? 0 : attr->color_pair;
     wchar_t display_ch = ch;
-    attr_t display_attr = attr;
+    attr_t display_attr = attr->attr;
 
-    if (state->markup_mode && markup_hint != MH_NONE) {
-        switch (markup_hint) {
-        case MH_FILL_END:
-            display_ch = L']';
-            break;
-        case MH_MOSAIC_HELD:
-            display_ch = L'}';
-            break;
-        case MH_MASK:
-            display_ch = L'~';
-            break;
-        case MH_LOWER_ROW:
-            display_ch = L'¬';
-            break;
-        default:
-            display_ch = ch;
-            break;
-        }
+    if (attr->has_concealed && !state->screen_revealed_state) {
+        display_ch = SPACE;
     }
 
     wchar_t vchar[2] = {display_ch, L'\0'};
@@ -623,17 +593,13 @@ vt_put_char(struct vt_decoder_state *state, int row, int col, wchar_t ch, attr_t
     setcchar(&cc, vchar, display_attr, display_color, 0);
     mvwadd_wch(state->win, row, col, &cc);
 
-    struct vt_decoder_cell *cell = &state->cells[row][col];
-    cell->attribute = attr;
+    memcpy(&cell->attr, attr, sizeof(struct vt_attr));
     cell->character = ch;
-    cell->color_pair = color;
-    cell->has_flash_attribute = state->flags.is_flashing;
-    cell->has_concealed_attribute = state->flags.is_concealed;
 
-    if (markup_hint != MH_MASK) {
+    if (trace) {
         vt_trace(state, 
             "putchar: char='%lc', code=%d, attr=%d, color=%d, flashing=%d, concealed=%d, row=%d, col=%d\n", 
-            ch, ch, attr, color, state->flags.is_flashing, state->flags.is_concealed, row, col);
+            ch, ch, attr->attr, attr->color_pair, state->flags.is_flashing, state->flags.is_concealed, row, col);
     }
 }
 

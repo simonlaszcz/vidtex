@@ -465,7 +465,6 @@ vt_parse_options(int argc, char *argv[], struct vt_session_state *session)
         {"dump", required_argument, 0, 0},
         {"menu", no_argument, 0, 0},
         {"cursor", no_argument, 0, 0},
-        {"markup", no_argument, 0, 0},
         {"mono", no_argument, 0, 0},
         {"trace", required_argument, 0, 0},
         {"bold", no_argument, 0, 0},
@@ -513,12 +512,9 @@ vt_parse_options(int argc, char *argv[], struct vt_session_state *session)
                 session->decoder_state.force_cursor = true;
                 break;
             case 5:
-                session->decoder_state.markup_mode = true;
-                break;
-            case 6:
                 session->decoder_state.mono_mode = true;
                 break;
-            case 7:
+            case 6:
                 if (session->decoder_state.trace_file != NULL) {
                     fprintf(stderr, USAGE);
                     goto abend;
@@ -530,7 +526,7 @@ vt_parse_options(int argc, char *argv[], struct vt_session_state *session)
                 }
                 setbuf(session->decoder_state.trace_file, NULL);
                 break;
-            case 8:
+            case 7:
                 session->decoder_state.bold_mode = true;
                 break;
             }
