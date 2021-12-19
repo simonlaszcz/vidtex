@@ -21,7 +21,6 @@
     "Error: %s (%d)\n\tat %s line %d\n", strerror(errno), errno, __FILE__, __LINE__)
 #define vt_is_ctrl(x) ((x) & 0x1F)
 #define RCFILE ".vidtexrc"
-#define USAGE "Usage:\n"
 #define IO_BUFFER_LEN 2048
 #define BUFFER_LEN 1024
 #define MAX_AMBLE_LEN 10
@@ -63,6 +62,7 @@ static struct vt_rc_entry *vt_show_rc_menu(struct vt_rc_entry **rc_data, int rc_
 static int vt_connect(struct vt_session_state *session);
 static bool vt_is_valid_fd(int fd);
 static int vt_transform_input(int ch);
+static void vt_usage();
 
 volatile sig_atomic_t terminate_received = false;
 volatile sig_atomic_t socket_closed = false;
@@ -139,7 +139,7 @@ main(int argc, char *argv[])
     setlocale(LC_ALL, "");
     initscr();
     vt_decoder_init(&session.decoder_state);
-    session.decoder_state.win = newwin(MAX_ROWS + 1, MAX_COLS + 1, 1, 1);
+    session.decoder_state.win = stdscr;
     cbreak();
     nodelay(session.decoder_state.win, true);
     noecho();
@@ -483,7 +483,7 @@ vt_parse_options(int argc, char *argv[], struct vt_session_state *session)
                 break;
             case 2:
                 if (session->dump_file != NULL) {
-                    fprintf(stderr, USAGE);
+                    vt_usage();
                     goto abend;
                 }
                 session->dump_file = fopen(optarg, "wb");
@@ -516,7 +516,7 @@ vt_parse_options(int argc, char *argv[], struct vt_session_state *session)
                 break;
             case 6:
                 if (session->decoder_state.trace_file != NULL) {
-                    fprintf(stderr, USAGE);
+                    vt_usage();
                     goto abend;
                 }
                 session->decoder_state.trace_file = fopen(optarg, "wt");
@@ -532,13 +532,13 @@ vt_parse_options(int argc, char *argv[], struct vt_session_state *session)
             }
             break;
         case '?':
-            fprintf(stderr, USAGE);
+            vt_usage();
             goto abend;
         }
     }
 
     if (session->host == NULL || session->port == NULL) {
-        fprintf(stderr, USAGE);
+        vt_usage();
         goto abend;
     }
 
@@ -662,4 +662,13 @@ vt_transform_input(int ch)
     default:
         return ch;
     }
+}
+
+static void
+vt_usage()
+{
+    fprintf(stderr, "Usage: vidtex [options]\nOptions:\n");
+    fprintf(stderr, "\t%-10s\tViewdata service host\n", "--host");
+    fprintf(stderr, "\t%-10s\tViewdata service host port\n", "--port");
+    fprintf(stderr, "\t%-10s\tPresent the contents of .vidtexrc as a menu so that a host can be chosen\n", "--menu");
 }

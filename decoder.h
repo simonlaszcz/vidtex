@@ -122,7 +122,7 @@ struct vt_decoder_state
     wchar_t frame_buffer[FRAME_BUFFER_MAX];
     int frame_buffer_offset;
     //  Store the characters written to the first row so we can check for the page number
-    wchar_t header_row[MAX_COLS];
+    wchar_t header_row[MAX_COLS + 1];
     bool screen_flash_state;
     bool screen_revealed_state;
     struct vt_decoder_cell cells[MAX_ROWS][MAX_COLS];
