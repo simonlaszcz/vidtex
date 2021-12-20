@@ -11,11 +11,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/timerfd.h>
 #include <sys/types.h>
 #include <unistd.h>
 #include "bedstead.h"
 #include "decoder.h"
+#include "telesoft.h"
 
 #define vt_perror() fprintf(stderr, \
     "Error: %s (%d)\n\tat %s line %d\n", strerror(errno), errno, __FILE__, __LINE__)
@@ -24,7 +26,7 @@
 #define IO_BUFFER_LEN 2048
 #define BUFFER_LEN 1024
 #define MAX_AMBLE_LEN 10
-#define POLL_PERIOD_MS 500
+#define POLL_PERIOD_MS -1
 
 struct vt_rc_entry
 {
@@ -49,6 +51,8 @@ struct vt_session_state
     struct vt_decoder_state decoder_state;
     char *cwd;
     int flash_timer_fd;
+    struct vt_telesoft_state telesoft_state;
+    int download_fd;
 };
 
 static void vt_terminate(int signal);
@@ -139,12 +143,16 @@ main(int argc, char *argv[])
     setlocale(LC_ALL, "");
     initscr();
     vt_decoder_init(&session.decoder_state);
+    vt_telesoft_reset(&session.telesoft_state);
     session.decoder_state.win = stdscr;
     cbreak();
     nodelay(session.decoder_state.win, true);
     noecho();
     keypad(session.decoder_state.win, true);
 
+    const char more = '_';
+    bool can_download = false;
+    bool is_downloading = false;
     uint8_t buffer[IO_BUFFER_LEN];
     struct pollfd poll_data[3] = {
         {.fd = session.socket_fd, .events = POLLIN},
@@ -153,52 +161,91 @@ main(int argc, char *argv[])
     };
 
     while (!(terminate_received || socket_closed)) {
-        int sz = poll(poll_data, 3, POLL_PERIOD_MS);
+        int prv = poll(poll_data, 3, POLL_PERIOD_MS);
 
-        if (sz > 0) {
-            if ((poll_data[0].revents & POLLIN) == POLLIN) {
-                sz = read(session.socket_fd, buffer, IO_BUFFER_LEN);
+        if (prv == -1 && errno != EINTR) {
+            vt_perror();
+            goto abend;
+        }
 
-                if (sz > 0) {
-                    vt_decode(&session.decoder_state, buffer, sz);
+        if (prv < 1) {
+            continue;
+        }
 
-                    if (session.dump_file != NULL) {
-                        fwrite(buffer, sizeof(uint8_t), sz, session.dump_file);
-                    }
+        if ((poll_data[0].revents & POLLIN) == POLLIN) {
+            int nread = read(session.socket_fd, buffer, IO_BUFFER_LEN);
+
+            if (nread > 0) {
+                if (session.dump_file != NULL) {
+                    fwrite(buffer, sizeof(uint8_t), nread, session.dump_file);
                 }
-            }
 
-            if ((poll_data[1].revents & POLLIN) == POLLIN) {
-                int ch = vt_transform_input(getch());
+                vt_decode(&session.decoder_state, buffer, nread);
 
-                switch (ch) {
-                case EOF:
-                    break;
-                case vt_is_ctrl('r'):
-                    vt_toggle_reveal(&session.decoder_state);
-                    break;
-                default:
-                    sz = write(session.socket_fd, &ch, 1);
-
-                    if (sz < 1) {
-                        socket_closed = true;
-                    }
-                    break;
+                if (!is_downloading) {
+                    can_download = vt_telesoft_try_decode_header(&session.telesoft_state, buffer, nread);
                 }
-            }
+                else {
+                    vt_telesoft_decode(&session.telesoft_state, buffer, nread, session.download_fd);
 
-            if ((poll_data[2].revents & POLLIN) == POLLIN) {
-                uint64_t elapsed = 0;
-                sz = read(session.flash_timer_fd, &elapsed, sizeof(uint64_t));
+                    if (session.telesoft_state.end_of_file || session.telesoft_state.end_of_frame) {
+                        if (session.telesoft_state.end_of_file) {
+                            if (close(session.download_fd) == -1) {
+                                vt_perror();
+                                goto abend;
+                            }
 
-                if (sz > 0) {
-                    vt_toggle_flash(&session.decoder_state);
+                            is_downloading = false;
+                            can_download = false;
+                            vt_telesoft_reset(&session.telesoft_state);
+                            session.download_fd = -1;
+                        }
+
+                        if (write(session.socket_fd, &more, 1) < 1) {
+                            socket_closed = true;
+                        }
+                    }
                 }
             }
         }
-        else if (sz == -1 && errno != EINTR) {
-            vt_perror();
-            goto abend;
+
+        if ((poll_data[1].revents & POLLIN) == POLLIN) {
+            int ch = vt_transform_input(getch());
+
+            switch (ch) {
+            case EOF:
+                break;
+            case vt_is_ctrl('r'):
+                vt_toggle_reveal(&session.decoder_state);
+                break;
+            case vt_is_ctrl('g'):
+                if (can_download) {
+                    is_downloading = true;
+                    session.download_fd = open(session.telesoft_state.filename, O_CREAT | O_WRONLY | O_TRUNC, S_IRWXU);
+
+                    if (session.download_fd == -1) {
+                        vt_perror();
+                        goto abend;
+                    }
+
+                    if (write(session.socket_fd, &more, 1) < 1) {
+                        socket_closed = true;
+                    }
+                }
+                break;
+            default:
+                if (write(session.socket_fd, &ch, 1) < 1) {
+                    socket_closed = true;
+                }
+                break;
+            }
+        }
+
+        if ((poll_data[2].revents & POLLIN) == POLLIN) {
+            uint64_t elapsed = 0;
+            if (read(session.flash_timer_fd, &elapsed, sizeof(uint64_t)) > 0) {
+                vt_toggle_flash(&session.decoder_state);
+            }
         }
     }
 
@@ -210,6 +257,7 @@ main(int argc, char *argv[])
     exit(EXIT_SUCCESS);
 
 abend:
+    printf("Unexpected error. Session terminated\nGoodbye\n");
     vt_cleanup(&session);
     exit(EXIT_FAILURE);
 }
@@ -259,6 +307,12 @@ vt_cleanup(struct vt_session_state *session)
 
     if (session->dump_file != NULL) {
         if (fclose(session->dump_file) == -1) {
+            vt_perror();
+        }
+    }
+
+    if (session->download_fd > -1) {
+        if (close(session->download_fd) == -1) {
             vt_perror();
         }
     }

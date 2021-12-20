@@ -1,7 +1,7 @@
 SHELL=/bin/bash
 CC=gcc
-HEADERS=decoder.h bedstead.h
-SRC=main.c decoder.c bedstead.c
+HEADERS=decoder.h bedstead.h telesoft.h
+SRC=main.c decoder.c bedstead.c telesoft.c
 FLAGS=-g
 
 dev: vidtex tags

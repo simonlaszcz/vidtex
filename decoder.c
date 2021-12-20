@@ -300,51 +300,19 @@ void
 vt_toggle_flash(struct vt_decoder_state *state)
 {
     state->screen_flash_state = !state->screen_flash_state;
+    vt_trace(state, "flash=%d\n", state->screen_flash_state);
 
-    //  Find spans of cells with matching attributes
     for (int r = 0; r < MAX_ROWS; ++r) {
-        struct vt_decoder_cell *row = state->cells[r];
-        int c = 0;
+        for (int c = 0; c < MAX_COLS; ++c) {
+            struct vt_decoder_cell *cell = &state->cells[r][c];
 
-        while (c < MAX_COLS) {
-            while (c < MAX_COLS && !row[c].attr.has_flash) {
-                ++c;
-            }
-
-            if (c < MAX_COLS) {
-                int start_c = c;
-                int span = 1;
-                attr_t start_attr = row[c].attr.attr;
-                short start_color = row[c].attr.color_pair;
-                bool start_concealed = row[c].attr.has_concealed;
-                ++c;
-
-                while (c < MAX_COLS 
-                    && row[c].attr.has_flash 
-                    && row[c].attr.has_concealed == start_concealed
-                    && row[c].attr.color_pair == start_color
-                    && row[c].attr.attr == start_attr) {
-                    ++c;
-                    ++span;
-                }
-
-                //  Don't flash a span if it's hidden
-                if (start_concealed && !state->screen_revealed_state) {
-                    continue;
-                }
-
-                if (state->screen_flash_state) {
-                    //  Reverse fg and bg
-                    short fg, bg;
-                    pair_content(start_color, &fg, &bg);
-                    start_color = vt_get_color_pair_number(bg, fg);
-                }
-
-                mvwchgat(state->win, r, start_c, span, start_attr, start_color, NULL);
-                wrefresh(state->win);
+            if (cell->attr.has_flash) {
+                vt_put_char(state, r, c, cell->character, &cell->attr, false);
             }
         }
     }
+
+    wrefresh(state->win);
 }
 
 void 
@@ -559,6 +527,10 @@ vt_put_char(struct vt_decoder_state *state, int row, int col, wchar_t ch, struct
     attr_t display_attr = attr->attr;
 
     if (attr->has_concealed && !state->screen_revealed_state) {
+        display_ch = SPACE;
+    }
+
+    if (attr->has_flash && !state->screen_flash_state) {
         display_ch = SPACE;
     }
 
