@@ -354,6 +354,7 @@ vt_decoder_new_frame(struct vt_decoder_state *state)
     state->col = 0;
     state->dheight_low_row = -1;
     state->frame_buffer_offset = 0;
+    state->screen_revealed_state = false;
     vt_decoder_reset_flags(&state->flags);
     vt_decoder_reset_after_flags(&state->after_flags);
     memset(state->cells, 0, sizeof(state->cells));
@@ -505,17 +506,13 @@ vt_get_color_pair_number(enum vt_decoder_color fg, enum vt_decoder_color bg)
 static wchar_t 
 vt_get_char_code(struct vt_decoder_state *state, int row_code, int col_code)
 {
-    struct bed_character_code ch;
-
-    bed_get_display_char(
+    return state->map_char(
         row_code,
         col_code, 
         state->flags.is_alpha, 
-        !state->flags.is_alpha,
-        state->flags.is_contiguous, 
-        &ch);
-
-    return ch.code;
+        state->flags.is_contiguous,
+        false,
+        false);
 }
 
 static void
@@ -544,8 +541,8 @@ vt_put_char(struct vt_decoder_state *state, int row, int col, wchar_t ch, struct
 
     if (trace) {
         vt_trace(state, 
-            "putchar: char='%lc', code=%d, attr=%d, color=%d, flashing=%d, concealed=%d, row=%d, col=%d\n", 
-            ch, ch, attr->attr, attr->color_pair, state->flags.is_flashing, state->flags.is_concealed, row, col);
+            "putchar: char='%lc', display='%lc', code=%d, attr=%d, color=%d, flashing=%d, concealed=%d, row=%d, col=%d\n", 
+            ch, display_ch, ch, attr->attr, attr->color_pair, state->flags.is_flashing, state->flags.is_concealed, row, col);
     }
 }
 

@@ -1,22 +1,9 @@
 #include "bedstead.h"
 
-static uint16_t bed_map_char(int row_code, int col_code, bool is_alpha, bool is_graph, bool is_contiguous);
-
-void bed_get_display_char(
-    int row_code, 
-    int col_code, 
-    bool is_alpha, 
-    bool is_graph, 
-    bool is_contiguous, 
-    struct bed_character_code *code)
+uint16_t bed_map_char(int row_code, int col_code, bool is_alpha, bool is_contiguous, bool is_dheight, bool is_dheight_lower)
 {
-    uint16_t m = bed_map_char(row_code, col_code, is_alpha, is_graph, is_contiguous);
-    code->code = m;
-    code->native_code = ((col_code << 4) + row_code) & 0x7F;
-}
+    bool is_graph = !is_alpha;
 
-static uint16_t bed_map_char(int row_code, int col_code, bool is_alpha, bool is_graph, bool is_contiguous)
-{
     if (row_code < 0 || row_code > 15 || col_code < 0 || col_code > 7) {
         //  Return space if out of bounds
         return 0x20;

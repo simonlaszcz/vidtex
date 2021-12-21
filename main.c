@@ -51,7 +51,7 @@ struct vt_session_state
     struct vt_decoder_state decoder_state;
     char *cwd;
     int flash_timer_fd;
-    struct vt_telesoft_state telesoft_state;
+    struct vt_tele_state tele_state;
     int download_fd;
 };
 
@@ -142,8 +142,11 @@ main(int argc, char *argv[])
 
     setlocale(LC_ALL, "");
     initscr();
+    if (session.decoder_state.map_char == NULL) {
+        session.decoder_state.map_char = &bed_map_char;
+    }
     vt_decoder_init(&session.decoder_state);
-    vt_telesoft_reset(&session.telesoft_state);
+    vt_tele_reset(&session.tele_state);
     session.decoder_state.win = stdscr;
     cbreak();
     nodelay(session.decoder_state.win, true);
@@ -183,13 +186,13 @@ main(int argc, char *argv[])
                 vt_decode(&session.decoder_state, buffer, nread);
 
                 if (!is_downloading) {
-                    can_download = vt_telesoft_try_decode_header(&session.telesoft_state, buffer, nread);
+                    can_download = vt_tele_decode_header(&session.tele_state, buffer, nread);
                 }
                 else {
-                    vt_telesoft_decode(&session.telesoft_state, buffer, nread, session.download_fd);
+                    vt_tele_decode(&session.tele_state, buffer, nread, session.download_fd);
 
-                    if (session.telesoft_state.end_of_file || session.telesoft_state.end_of_frame) {
-                        if (session.telesoft_state.end_of_file) {
+                    if (session.tele_state.end_of_file || session.tele_state.end_of_frame) {
+                        if (session.tele_state.end_of_file) {
                             if (close(session.download_fd) == -1) {
                                 vt_perror();
                                 goto abend;
@@ -197,7 +200,7 @@ main(int argc, char *argv[])
 
                             is_downloading = false;
                             can_download = false;
-                            vt_telesoft_reset(&session.telesoft_state);
+                            vt_tele_reset(&session.tele_state);
                             session.download_fd = -1;
                         }
 
@@ -221,7 +224,8 @@ main(int argc, char *argv[])
             case vt_is_ctrl('g'):
                 if (can_download) {
                     is_downloading = true;
-                    session.download_fd = open(session.telesoft_state.filename, O_CREAT | O_WRONLY | O_TRUNC, S_IRWXU);
+                    session.download_fd 
+                        = open(session.tele_state.filename, O_CREAT | O_WRONLY | O_TRUNC, S_IRWXU);
 
                     if (session.download_fd == -1) {
                         vt_perror();
@@ -522,6 +526,7 @@ vt_parse_options(int argc, char *argv[], struct vt_session_state *session)
         {"mono", no_argument, 0, 0},
         {"trace", required_argument, 0, 0},
         {"bold", no_argument, 0, 0},
+        {"galax", no_argument, 0, 0},
         {0, 0, 0, 0}
     };
 
@@ -582,6 +587,9 @@ vt_parse_options(int argc, char *argv[], struct vt_session_state *session)
                 break;
             case 7:
                 session->decoder_state.bold_mode = true;
+                break;
+            case 8:
+                session->decoder_state.map_char = &gal_map_char;
                 break;
             }
             break;

@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include "bedstead.h"
+#include "galax.h"
 
 #define MAX_ROWS 24
 #define MAX_COLS 40
@@ -126,6 +127,9 @@ struct vt_decoder_state
     bool screen_flash_state;
     bool screen_revealed_state;
     struct vt_decoder_cell cells[MAX_ROWS][MAX_COLS];
+
+    uint16_t (*map_char)(int row_code, int col_code, bool is_alpha, 
+        bool is_contiguous, bool is_dheight, bool is_dheight_lower);
 };
 
 void vt_decoder_init(struct vt_decoder_state *state);
