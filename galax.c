@@ -6,7 +6,7 @@ uint16_t gal_map_char(int row_code, int col_code, bool is_alpha, bool is_contigu
 
     if (row_code < 0 || row_code > 15 || col_code < 0 || col_code > 7) {
         //  Return space if out of bounds
-        return '?';
+        return 0x20;
     }
     
     uint16_t ch = 0x20;

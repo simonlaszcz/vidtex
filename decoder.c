@@ -334,19 +334,6 @@ vt_toggle_reveal(struct vt_decoder_state *state)
     wrefresh(state->win);
 }
 
-/*
-    FrameNumber(): string {
-        const text = headerRow.join('');
-        const matches = text.match(/ P?(\d+)|(\d+[a-z]) /);
-
-        if (matches && matches.length > 1) {
-            return matches[1];
-        }
-
-        return '0';
-    }
-*/
-
 static void 
 vt_decoder_new_frame(struct vt_decoder_state *state)
 {
