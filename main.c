@@ -27,6 +27,7 @@
 #define BUFFER_LEN 1024
 #define MAX_AMBLE_LEN 10
 #define POLL_PERIOD_MS -1
+#define VERSION "1.0.0"
 
 struct vt_rc_entry
 {
@@ -78,6 +79,7 @@ main(int argc, char *argv[])
     memset(&session, 0, sizeof(struct vt_session_state));
     session.socket_fd = -1;
     session.flash_timer_fd = -1;
+    session.download_fd = -1;
 
     struct sigaction new_action;
     new_action.sa_handler = vt_terminate;
@@ -261,7 +263,6 @@ main(int argc, char *argv[])
     exit(EXIT_SUCCESS);
 
 abend:
-    printf("Unexpected error. Session terminated\nGoodbye\n");
     vt_cleanup(&session);
     exit(EXIT_FAILURE);
 }
@@ -659,6 +660,7 @@ vt_connect(struct vt_session_state *session)
         if (session->socket_fd == -1) {
             continue;
         }
+
         if (connect(session->socket_fd, rp->ai_addr, rp->ai_addrlen) != -1) {
             break;
         }
@@ -729,8 +731,15 @@ vt_transform_input(int ch)
 static void
 vt_usage()
 {
+    fprintf(stderr, "Version: %s\n", VERSION);
     fprintf(stderr, "Usage: vidtex [options]\nOptions:\n");
-    fprintf(stderr, "\t%-10s\tViewdata service host\n", "--host");
-    fprintf(stderr, "\t%-10s\tViewdata service host port\n", "--port");
-    fprintf(stderr, "\t%-10s\tPresent the contents of .vidtexrc as a menu so that a host can be chosen\n", "--menu");
+    fprintf(stderr, "%-16s\tOutput bold brighter colours\n", "--bold");
+    fprintf(stderr, "%-16s\tAlways show cursor\n", "--cursor");
+    fprintf(stderr, "%-16s\tDump all bytes read from host to file\n", "--dump filename");
+    fprintf(stderr, "%-16s\tOutput char codes for Mode7 font\n", "--galax");
+    fprintf(stderr, "%-16s\tViewdata service host\n", "--host name");
+    fprintf(stderr, "%-16s\tCreate menu from .vidtexrc\n", "--menu");
+    fprintf(stderr, "%-16s\tMonochrome display\n", "--mono");
+    fprintf(stderr, "%-16s\tViewdata service host port\n", "--port number");
+    fprintf(stderr, "%-16s\tWrite trace to file\n", "--trace filename");
 }
