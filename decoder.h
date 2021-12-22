@@ -34,6 +34,13 @@ enum vt_decoder_tristate
     TRI_UNDEF = -1
 };
 
+struct vt_char
+{
+    wchar_t single;
+    wchar_t upper;
+    wchar_t lower;
+};
+
 struct vt_decoder_flags
 {
     //  Bg colour. The 'black bg' and 'new bg' commands are Set-At.
@@ -73,7 +80,7 @@ struct vt_decoder_flags
     Setting False is Set-After
     */
     bool is_mosaic_held;
-    wchar_t held_mosaic;
+    struct vt_char held_mosaic;
     bool is_double_height;
     //  DC1 = on, DC4 = off. Set-At
     bool is_cursor_on;
@@ -119,7 +126,6 @@ struct vt_decoder_state
     int col;
     //  Set when we need to ignore double height row 2 in the input stream
     int dheight_low_row;
-    wchar_t last_character;
     wchar_t frame_buffer[FRAME_BUFFER_MAX];
     int frame_buffer_offset;
     //  Store the characters written to the first row so we can check for the page number
@@ -127,6 +133,7 @@ struct vt_decoder_state
     bool screen_flash_state;
     bool screen_revealed_state;
     struct vt_decoder_cell cells[MAX_ROWS][MAX_COLS];
+    struct vt_char space;
 
     uint16_t (*map_char)(int row_code, int col_code, bool is_alpha, 
         bool is_contiguous, bool is_dheight, bool is_dheight_lower);

@@ -9,6 +9,10 @@ uint16_t bed_map_char(int row_code, int col_code, bool is_alpha, bool is_contigu
         return 0x20;
     }
 
+    if (is_dheight && is_dheight_lower) {
+        return 0x20;
+    }
+
     if (col_code == 2 && is_alpha) {
         switch (row_code) {
         case 3: return 0xA3;

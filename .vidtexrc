@@ -6,5 +6,7 @@ telstar-fast-1	glasstty.com	6502	255 253 3	42 57 48 95 95
 telstar-fast-2	glasstty.com	6503	255 253 3	42 57 48 95 95
 telstar-slow-1	glasstty.com	6502	 	42 57 48 95 95
 telstar-slow-2	glasstty.com	6503	 	42 57 48 95 95
+prestel demo	viewdata.org.uk	6522
+linkline demo	viewdata.org.uk	6854
 #offline for a long time
 ringworld	rw1.m63.co.uk	23

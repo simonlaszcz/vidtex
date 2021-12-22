@@ -1,19 +1,18 @@
 #include <stdarg.h>
 #include "decoder.h"
 
-#define DBL_HEIGHT_ATTR (A_BOLD)
-#define ATTRS_IGNORED_TO_EOL_MASK (~DBL_HEIGHT_ATTR)
-
 static void vt_decoder_new_frame(struct vt_decoder_state *state);
 static void vt_decoder_next_row(struct vt_decoder_state *state);
 static void vt_decoder_fill_end(struct vt_decoder_state *state);
-static void vt_decoder_reset_flags(struct vt_decoder_flags *flags);
+static void vt_decoder_reset_flags(struct vt_decoder_state *state);
 static void vt_set_attr(struct vt_decoder_state *state, struct vt_attr *attr);
 static short vt_get_color_pair_number(enum vt_decoder_color fg, enum vt_decoder_color bg);
-static void vt_decoder_apply_after_flags(struct vt_decoder_after_flags *after, struct vt_decoder_flags *flags);
-static void vt_decoder_reset_after_flags(struct vt_decoder_after_flags *flags);
-static wchar_t vt_get_char_code(struct vt_decoder_state *state, int row_code, int col_code);
-static void vt_put_char(struct vt_decoder_state *state, int row, int col, wchar_t ch, struct vt_attr *attr, bool trace);
+static void vt_decoder_apply_after_flags(struct vt_decoder_state *state);
+static void vt_decoder_reset_after_flags(struct vt_decoder_state *state);
+static void vt_get_char_code(struct vt_decoder_state *state, 
+    bool is_alpha, bool is_contiguous, int row_code, int col_code, struct vt_char *ch);
+static void vt_put_char(struct vt_decoder_state *state, 
+    int row, int col, wchar_t ch, struct vt_attr *attr, bool trace);
 static void vt_init_colors();
 static void vt_trace(struct vt_decoder_state *state, char *format, ...);
 static void vt_cursor(struct vt_decoder_state *state);
@@ -34,6 +33,7 @@ vt_decoder_init(struct vt_decoder_state *state)
     state->flags.is_cursor_on = false;
     curs_set(state->force_cursor);
     vt_decoder_new_frame(state);
+    vt_get_char_code(state, true, false, 0, 2, &state->space);
 }
 
 void 
@@ -168,7 +168,7 @@ vt_decode(struct vt_decoder_state *state, uint8_t *buffer, int count)
                 break;
             case 12:    //  normal height
                 state->flags.is_double_height = false;
-                state->flags.held_mosaic = SPACE;
+                state->flags.held_mosaic = state->space;
                 vt_trace(state, "double-height=false, held-mosaic=' '\n");
                 break;
             case 13:    //  double height (but not on last row)
@@ -231,54 +231,56 @@ vt_decode(struct vt_decoder_state *state, uint8_t *buffer, int count)
         if (state->row != state->dheight_low_row) {
             struct vt_attr attr;
             vt_set_attr(state, &attr);
-
-            //  Row 2 of double height text has no fg data
-            //  When processing the next row, we need to ensure that we don't overwrite it
-            if (state->flags.is_double_height) {
-                struct vt_decoder_cell *cell_below = 
-                    &state->cells[state->dheight_low_row][state->col];
-                short fg, bg;
-                pair_content(cell_below->attr.color_pair, &fg, &bg);
-
-                struct vt_attr attr_below;
-                memcpy(&attr_below, &attr, sizeof(struct vt_attr));
-                attr_below.color_pair = 
-                    vt_get_color_pair_number(fg, state->flags.bg_color);
-
-                vt_put_char(state, state->dheight_low_row, state->col, SPACE, &attr_below, false);
-            }
+            struct vt_char ch;
 
             if (col_code == 0 || col_code == 1) {
-                wchar_t ch = state->flags.is_mosaic_held ? state->flags.held_mosaic : SPACE;
-                vt_put_char(state, state->row, state->col, ch, &attr, true);
+                ch = state->flags.is_mosaic_held ? state->flags.held_mosaic : state->space;
+
+                if (state->flags.is_double_height) {
+                    vt_put_char(state, state->row, state->col, ch.upper, &attr, true);
+                }
+                else {
+                    vt_put_char(state, state->row, state->col, ch.single, &attr, true);
+                }
 
                 if (state->row == 0) {
                     state->header_row[state->col] = SPACE;
                 }
             }
             else {
-                state->last_character = vt_get_char_code(state, row_code, col_code);
-                vt_put_char(state, state->row, state->col, state->last_character, &attr, true);
+                vt_get_char_code(state, state->flags.is_alpha, 
+                    state->flags.is_contiguous, row_code, col_code, &ch);
+
+                if (state->flags.is_double_height) {
+                    vt_put_char(state, state->row, state->col, ch.upper, &attr, true);
+                }
+                else {
+                    vt_put_char(state, state->row, state->col, ch.single, &attr, true);
+                }
 
                 if (!state->flags.is_alpha) {
-                    state->flags.held_mosaic = state->last_character;
+                    state->flags.held_mosaic = ch;
                     vt_trace(state, "held-mosaic='%lc'\n", state->flags.held_mosaic);
                 }
 
                 if (state->row == 0) {
-                    state->header_row[state->col] = state->last_character;
+                    state->header_row[state->col] = ch.single;
                 }
+            }
+
+            if (state->flags.is_double_height) {
+                vt_put_char(state, state->dheight_low_row, state->col, ch.lower, &attr, true);
             }
         }
 
-        vt_decoder_apply_after_flags(&state->after_flags, &state->flags);
+        vt_decoder_apply_after_flags(state);
 
         if (state->after_flags.is_double_height == TRI_TRUE) {
             state->dheight_low_row = state->row + 1;
             vt_trace(state, "dheight_low_row=%d\n", state->dheight_low_row);
         }
 
-        vt_decoder_reset_after_flags(&state->after_flags);
+        vt_decoder_reset_after_flags(state);
         ++state->col;
 
         //  Automatically start a new row if we've got a full row
@@ -342,8 +344,8 @@ vt_decoder_new_frame(struct vt_decoder_state *state)
     state->dheight_low_row = -1;
     state->frame_buffer_offset = 0;
     state->screen_revealed_state = false;
-    vt_decoder_reset_flags(&state->flags);
-    vt_decoder_reset_after_flags(&state->after_flags);
+    vt_decoder_reset_flags(state);
+    vt_decoder_reset_after_flags(state);
     memset(state->cells, 0, sizeof(state->cells));
 
     for (int i = 0; i < MAX_COLS; ++i) {
@@ -372,8 +374,8 @@ vt_decoder_next_row(struct vt_decoder_state *state)
     }
     
     state->col = 0;
-    vt_decoder_reset_flags(&state->flags);
-    vt_decoder_reset_after_flags(&state->after_flags);
+    vt_decoder_reset_flags(state);
+    vt_decoder_reset_after_flags(state);
 }
 
 static void 
@@ -383,7 +385,7 @@ vt_decoder_fill_end(struct vt_decoder_state *state)
         struct vt_decoder_cell *prev = &state->cells[state->row][state->col - 1];
         struct vt_attr attr;
         memset(&attr, 0, sizeof(struct vt_attr));
-        attr.attr = prev->attr.attr & ATTRS_IGNORED_TO_EOL_MASK;
+        attr.attr = prev->attr.attr;
         attr.color_pair = prev->attr.color_pair;
 
         for (int col = state->col; col < MAX_COLS; ++col) {
@@ -394,8 +396,10 @@ vt_decoder_fill_end(struct vt_decoder_state *state)
 }
 
 static void 
-vt_decoder_apply_after_flags(struct vt_decoder_after_flags *after, struct vt_decoder_flags *flags)
+vt_decoder_apply_after_flags(struct vt_decoder_state *state)
 {
+    struct vt_decoder_after_flags *after = &state->after_flags;
+    struct vt_decoder_flags *flags = &state->flags;
     bool was_alpha = flags->is_alpha;
 
     if (after->alpha_fg_color != NONE) {
@@ -410,7 +414,7 @@ vt_decoder_apply_after_flags(struct vt_decoder_after_flags *after, struct vt_dec
     }
 
     if (flags->is_alpha != was_alpha) {
-        flags->held_mosaic = SPACE;
+        flags->held_mosaic = state->space;
     }
 
     if (after->is_flashing == TRI_TRUE) {
@@ -431,32 +435,32 @@ vt_decoder_apply_after_flags(struct vt_decoder_after_flags *after, struct vt_dec
 }
 
 static void 
-vt_decoder_reset_flags(struct vt_decoder_flags *flags)
+vt_decoder_reset_flags(struct vt_decoder_state *state)
 {
-    flags->bg_color = BLACK;
-    flags->alpha_fg_color = WHITE;
-    flags->mosaic_fg_color = WHITE;
-    flags->is_alpha = true;
-    flags->is_flashing = false;
-    flags->is_escaped = false;
-    flags->is_boxing = false;
-    flags->is_concealed = false;
-    flags->is_contiguous = true;
-    flags->is_mosaic_held = false;
-    flags->held_mosaic = SPACE;
-    flags->is_double_height = false;
+    state->flags.bg_color = BLACK;
+    state->flags.alpha_fg_color = WHITE;
+    state->flags.mosaic_fg_color = WHITE;
+    state->flags.is_alpha = true;
+    state->flags.is_flashing = false;
+    state->flags.is_escaped = false;
+    state->flags.is_boxing = false;
+    state->flags.is_concealed = false;
+    state->flags.is_contiguous = true;
+    state->flags.is_mosaic_held = false;
+    state->flags.held_mosaic = state->space;
+    state->flags.is_double_height = false;
     //  Leave cursor ON
 }
 
 static void 
-vt_decoder_reset_after_flags(struct vt_decoder_after_flags *flags)
+vt_decoder_reset_after_flags(struct vt_decoder_state *state)
 {
-    flags->alpha_fg_color = NONE;
-    flags->mosaic_fg_color = NONE;
-    flags->is_flashing = TRI_UNDEF;
-    flags->is_boxing = TRI_UNDEF;
-    flags->is_mosaic_held = TRI_UNDEF;
-    flags->is_double_height = TRI_UNDEF;
+    state->after_flags.alpha_fg_color = NONE;
+    state->after_flags.mosaic_fg_color = NONE;
+    state->after_flags.is_flashing = TRI_UNDEF;
+    state->after_flags.is_boxing = TRI_UNDEF;
+    state->after_flags.is_mosaic_held = TRI_UNDEF;
+    state->after_flags.is_double_height = TRI_UNDEF;
 }
 
 static void 
@@ -466,10 +470,6 @@ vt_set_attr(struct vt_decoder_state *state, struct vt_attr *attr)
     attr->attr = state->bold_mode ? A_BOLD : 0;
     attr->has_flash = state->flags.is_flashing;
     attr->has_concealed = state->flags.is_concealed;
-
-    if (state->flags.is_double_height) {
-        attr->attr |= DBL_HEIGHT_ATTR;
-    }
 
     if (has_colors()) {
         enum vt_decoder_color fg = state->flags.is_alpha ? 
@@ -490,16 +490,16 @@ vt_get_color_pair_number(enum vt_decoder_color fg, enum vt_decoder_color bg)
     return (fg << 3) + bg;
 }
 
-static wchar_t 
-vt_get_char_code(struct vt_decoder_state *state, int row_code, int col_code)
+static void 
+vt_get_char_code(
+    struct vt_decoder_state *state, 
+    bool is_alpha, bool is_contiguous, 
+    int row_code, int col_code, 
+    struct vt_char *ch)
 {
-    return state->map_char(
-        row_code,
-        col_code, 
-        state->flags.is_alpha, 
-        state->flags.is_contiguous,
-        false,
-        false);
+    ch->single = state->map_char(row_code, col_code, is_alpha, is_contiguous, false, false);
+    ch->upper = state->map_char(row_code, col_code, is_alpha, is_contiguous, true, false);
+    ch->lower = state->map_char(row_code, col_code, is_alpha, is_contiguous, true, true);
 }
 
 static void
@@ -523,7 +523,7 @@ vt_put_char(struct vt_decoder_state *state, int row, int col, wchar_t ch, struct
     setcchar(&cc, vchar, display_attr, display_color, 0);
     mvwadd_wch(state->win, row, col, &cc);
 
-    memcpy(&cell->attr, attr, sizeof(struct vt_attr));
+    cell->attr = *attr;
     cell->character = ch;
 
     if (trace) {
