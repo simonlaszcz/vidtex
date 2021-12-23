@@ -260,7 +260,7 @@ vt_decode(struct vt_decoder_state *state, uint8_t *buffer, int count)
 
                 if (!state->flags.is_alpha) {
                     state->flags.held_mosaic = ch;
-                    vt_trace(state, "held-mosaic='%lc'\n", state->flags.held_mosaic);
+                    vt_trace(state, "held-mosaic single='%lc'\n", state->flags.held_mosaic.single);
                 }
 
                 if (state->row == 0) {
@@ -302,7 +302,6 @@ void
 vt_toggle_flash(struct vt_decoder_state *state)
 {
     state->screen_flash_state = !state->screen_flash_state;
-    vt_trace(state, "flash=%d\n", state->screen_flash_state);
 
     for (int r = 0; r < MAX_ROWS; ++r) {
         for (int c = 0; c < MAX_COLS; ++c) {
@@ -321,7 +320,6 @@ void
 vt_toggle_reveal(struct vt_decoder_state *state)
 {
     state->screen_revealed_state = !state->screen_revealed_state;
-    vt_trace(state, "revealed=%d\n", state->screen_revealed_state);
 
     for (int r = 0; r < MAX_ROWS; ++r) {
         for (int c = 0; c < MAX_COLS; ++c) {
@@ -497,6 +495,9 @@ vt_get_char_code(
     int row_code, int col_code, 
     struct vt_char *ch)
 {
+    vt_trace(state, "(row_code,col_code)=(%d,%d), is_alpha=%d, is_contiguous=%d\n",
+        row_code, col_code, is_alpha, is_contiguous);
+
     ch->single = state->map_char(row_code, col_code, is_alpha, is_contiguous, false, false);
     ch->upper = state->map_char(row_code, col_code, is_alpha, is_contiguous, true, false);
     ch->lower = state->map_char(row_code, col_code, is_alpha, is_contiguous, true, true);

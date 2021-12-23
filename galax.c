@@ -2,7 +2,9 @@
 
 uint16_t gal_map_char(int row_code, int col_code, bool is_alpha, bool is_contiguous, bool is_dheight, bool is_dheight_lower)
 {
-    bool is_graph = !is_alpha;
+    if (col_code == 4 || col_code == 5) {
+        is_alpha = true;
+    }
 
     if (row_code < 0 || row_code > 15 || col_code < 0 || col_code > 7) {
         //  Return space if out of bounds
@@ -11,7 +13,7 @@ uint16_t gal_map_char(int row_code, int col_code, bool is_alpha, bool is_contigu
     
     uint16_t ch = 0x20;
 
-    if (is_graph) {
+    if (!is_alpha) {
         switch (col_code) {
         case 2:
             ch = 0xE200 + row_code;

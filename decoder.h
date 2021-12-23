@@ -36,9 +36,9 @@ enum vt_decoder_tristate
 
 struct vt_char
 {
-    wchar_t single;
-    wchar_t upper;
-    wchar_t lower;
+    uint16_t single;
+    uint16_t upper;
+    uint16_t lower;
 };
 
 struct vt_decoder_flags
