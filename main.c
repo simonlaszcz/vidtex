@@ -177,7 +177,7 @@ main(int argc, char *argv[])
             continue;
         }
 
-        if ((poll_data[0].revents & POLLIN) == POLLIN) {
+        if (poll_data[0].revents & POLLIN) {
             int nread = read(session.socket_fd, buffer, IO_BUFFER_LEN);
 
             if (nread > 0) {
@@ -214,7 +214,7 @@ main(int argc, char *argv[])
             }
         }
 
-        if ((poll_data[1].revents & POLLIN) == POLLIN) {
+        if (poll_data[1].revents & POLLIN) {
             int ch = vt_transform_input(getch());
 
             switch (ch) {
@@ -247,7 +247,7 @@ main(int argc, char *argv[])
             }
         }
 
-        if ((poll_data[2].revents & POLLIN) == POLLIN) {
+        if (poll_data[2].revents & POLLIN) {
             uint64_t elapsed = 0;
             if (read(session.flash_timer_fd, &elapsed, sizeof(uint64_t)) > 0) {
                 vt_toggle_flash(&session.decoder_state);
