@@ -19,10 +19,16 @@
 #include "decoder.h"
 #include "telesoft.h"
 
+#ifdef SYSCONFDIR
+const char *sys_conf_dir = SYSCONFDIR;
+#else
+const char *sys_conf_dir = NULL;
+#endif
+
 #define vt_perror() fprintf(stderr, \
     "Error: %s (%d)\n\tat %s line %d\n", strerror(errno), errno, __FILE__, __LINE__)
 #define vt_is_ctrl(x) ((x) & 0x1F)
-#define RCFILE ".vidtexrc"
+#define RCFILE "vidtexrc"
 #define IO_BUFFER_LEN 2048
 #define BUFFER_LEN 1024
 #define MAX_AMBLE_LEN 10
@@ -104,6 +110,12 @@ main(int argc, char *argv[])
     if (sigaction(SIGPIPE, &new_action, NULL) == -1) {
         vt_perror();
         goto abend;
+    }
+
+    if (sys_conf_dir != NULL) {
+        if (vt_get_rc(sys_conf_dir, &session.rc_data, &session.rc_data_count) != EXIT_SUCCESS) {
+            goto abend;
+        }
     }
 
     char *home = getenv("HOME");
@@ -732,13 +744,14 @@ static void
 vt_usage()
 {
     fprintf(stderr, "Version: %s\n", VERSION);
+    fprintf(stderr, "SYSCONFDIR=%s\n", sys_conf_dir);
     fprintf(stderr, "Usage: vidtex [options]\nOptions:\n");
     fprintf(stderr, "%-16s\tOutput bold brighter colours\n", "--bold");
     fprintf(stderr, "%-16s\tAlways show cursor\n", "--cursor");
     fprintf(stderr, "%-16s\tDump all bytes read from host to file\n", "--dump filename");
     fprintf(stderr, "%-16s\tOutput char codes for Mode7 font\n", "--galax");
     fprintf(stderr, "%-16s\tViewdata service host\n", "--host name");
-    fprintf(stderr, "%-16s\tCreate menu from .vidtexrc\n", "--menu");
+    fprintf(stderr, "%-16s\tCreate menu from vidtexrc\n", "--menu");
     fprintf(stderr, "%-16s\tMonochrome display\n", "--mono");
     fprintf(stderr, "%-16s\tViewdata service host port\n", "--port number");
     fprintf(stderr, "%-16s\tWrite trace to file\n", "--trace filename");

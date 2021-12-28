@@ -1,6 +1,10 @@
 man_MANS=src/vidtex.1
 bin_PROGRAMS=vidtex
-vidtex_CFLAGS=-g @CURSES_CFLAGS@
+
+configdir=${sysconfdir}/vidtex
+config_DATA=src/vidtexrc
+
+vidtex_CFLAGS=-g @CURSES_CFLAGS@ -DSYSCONFDIR=\"${configdir}\"
 vidtex_LDADD=@CURSES_LIBS@
 vidtex_SOURCES=\
 	src/bedstead.c \
@@ -13,5 +17,3 @@ vidtex_SOURCES=\
 	src/telesoft.c \
 	src/telesoft.h \
 	src/vidtexrc
-configdir=${sysconfdir}/vidtex
-config_DATA=src/vidtexrc
