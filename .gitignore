@@ -1,6 +1,7 @@
 *.in
 *.in~
 *.log
+*.o
 *.swp
 .deps
 .dirstamp
