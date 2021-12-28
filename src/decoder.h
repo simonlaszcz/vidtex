@@ -1,7 +1,10 @@
 #ifndef __DECODER_H
 #define __DEODER_H
 
+#ifndef _XOPEN_SOURCE
 #define _XOPEN_SOURCE 700
+#endif
+
 #include <ncursesw/curses.h>
 #include <stdbool.h>
 #include <string.h>
