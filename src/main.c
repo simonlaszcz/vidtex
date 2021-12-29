@@ -543,8 +543,8 @@ vt_parse_options(int argc, char *argv[], struct vt_session_state *session)
         {0, 0, 0, 0}
     };
 
-	while ((optrv = getopt_long(argc, argv, "", long_options, &optidx)) != -1) {
-		switch (optrv) {
+    while ((optrv = getopt_long(argc, argv, "", long_options, &optidx)) != -1) {
+        switch (optrv) {
         case 0:
             switch (optidx) {
             case 0:
