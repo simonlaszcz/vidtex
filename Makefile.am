@@ -16,4 +16,5 @@ vidtex_SOURCES=\
 	src/main.c \
 	src/telesoft.c \
 	src/telesoft.h \
-	src/vidtexrc
+	src/vidtexrc \
+	src/vidtex.1
