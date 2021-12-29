@@ -36,11 +36,11 @@ Several variations are available but the following is recommended:
 <https://galax.xyz/TELETEXT/MODE7GX3.TTF>
 
 ## Installation
-1. wget "https://github.com/simonlaszcz/vidtex/blob/master/releases/vidtex-1.0.0.tar.gz"
-2. tar xvf vidtex-1.0.0.tar.gz
-3. cd vidtex-1.0.0
-4. ./configure
-5. sudo make install
+    wget "https://github.com/simonlaszcz/vidtex/blob/master/releases/vidtex-1.0.0.tar.gz"
+    tar xvf vidtex-1.0.0.tar.gz
+    cd vidtex-1.0.0
+    ./configure
+    sudo make install
 
 ## Example Usage
     man vidtex
