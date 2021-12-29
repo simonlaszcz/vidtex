@@ -1,4 +1,4 @@
-# vidtex - videotex/viewdata client
+# vidtex - ncurses videotex/viewdata client
 
 
 > **See the installed man page for more detailed usage instructions**
@@ -36,7 +36,7 @@ Several variations are available but the following is recommended:
 <https://galax.xyz/TELETEXT/MODE7GX3.TTF>
 
 ## Installation
-1. wget ""
+1. wget "https://github.com/simonlaszcz/vidtex/blob/master/releases/vidtex-1.0.0.tar.gz"
 2. tar xvf vidtex-1.0.0.tar.gz
 3. cd vidtex-1.0.0
 4. ./configure
