@@ -1,6 +1,7 @@
 #include "galax.h"
 
-uint16_t gal_map_char(int row_code, int col_code, bool is_alpha, bool is_contiguous, bool is_dheight, bool is_dheight_lower)
+uint16_t 
+gal_map_char(int row_code, int col_code, bool is_alpha, bool is_contiguous, bool is_dheight, bool is_dheight_lower)
 {
     if (col_code == 4 || col_code == 5) {
         is_alpha = true;

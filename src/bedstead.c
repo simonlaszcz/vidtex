@@ -1,6 +1,7 @@
 #include "bedstead.h"
 
-uint16_t bed_map_char(int row_code, int col_code, bool is_alpha, bool is_contiguous, bool is_dheight, bool is_dheight_lower)
+uint16_t
+bed_map_char(int row_code, int col_code, bool is_alpha, bool is_contiguous, bool is_dheight, bool is_dheight_lower)
 {
     bool is_graph = !is_alpha;
 
@@ -66,5 +67,3 @@ uint16_t bed_map_char(int row_code, int col_code, bool is_alpha, bool is_contigu
 
     return 0x20;
 }
-
-
