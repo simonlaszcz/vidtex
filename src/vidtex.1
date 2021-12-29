@@ -1,1 +1,115 @@
-THIS IS A TEST
+.TH VIDTEX 1 2021-12-28
+.SH NAME
+vidtex \- videotex/viewdata client
+.SH SYNOPSIS
+.B vidtex
+.IR options
+.SH DESCRIPTION
+.B vidtex
+is a Viewdata/Videotex client that can connect to services over TCP. Currently these services are NXTel, TeeFax, Telstar and Tetrachloromethane. Additional services may be configured by modifying the file \fIvidtexrc\fR. Alternatively you may supply the hostname and port number as options.
+.PP
+Viewdata uses a specific character set to transmit text and graphics characters. While many of these overlap with ASCII, most do not. Consequently, it is envisaged that the user will customise their terminal emulator to use a font that supports these characters.
+.PP
+By default the program outputs character codes compatible with the Bedstead font. However, the best experience will be had if a Galax Mode 7 font is used as this font supports double height characters. The Bedstead font was chosen as the default as it is most compatible with ASCII. For example, Galax causes '{' to be translated to '['.
+.PP
+The Bedstead font may be obtained from:
+.PP
+.IR https://bjh21.me.uk/bedstead/
+.PP
+Several variations are available but the regular font is recommended:
+.PP
+.IR https://bjh21.me.uk/bedstead/bedstead.otf
+.PP
+The Galax Mode 7 font may be obtained from:
+.PP
+.IR https://galax.xyz/TELETEXT/index.html
+.PP
+Several variations are available but the following is recommended:
+.PP
+.IR https://galax.xyz/TELETEXT/MODE7GX3.TTF
+.SH OPTIONS
+.TP
+\-\-\fBbold   
+Output bold text and brighter colours 
+.TP
+\-\-\fBcursor
+Always display the cursor
+.TP
+\-\-\fBdump \fIfile
+Dump all bytes received from the host to \fIfile\fR
+.TP
+\-\-\fBgalax
+Output character codes compatible with the Galax Mode 7 font
+.TP
+\-\-\fBhost \fIname
+Viewdata service host name
+.TP
+\-\-\fBmenu
+At startup, display a menu of the hosts configured in vidtexrc
+.TP
+\-\-\fBmono
+Monochrome output
+.TP
+\-\-\fBport \fInumber
+Viewdata service host port
+.TP
+\-\-\fBtrace \fIfile
+Write a trace of processing to \fIfile\fR
+.SH USAGE
+Viewdata is the basis of both TELETEXT and more interactive BBS-like systems. The former was normally received using a Television set. Pages (or more precisely, frames) were navigated by entering three digit page numbers. The TeeFax service is a TELETEXT service.
+.PP
+Navigation within BBS-like services (such as Telstar) is performed in two ways. Firstly, by entering digits and letters if the current page displays a menu. Secondly, pages may be located using a key sequence of the format '*page#'.
+.PP
+Traditionally a number of predefined sequences were used to perform common operations, namely:
+.TP
+\fB#
+Used in place of ENTER/RETURN
+.TP
+\fB*#
+Previous page
+.TP
+\fB*0#
+Home page
+.TP
+\fB*00#
+Reload page
+.TP
+\fB*90#
+Logoff
+.PP
+Viewdata services often provided software that could be downloaded. Telstar and NXTel both provide this feature. To download software, navigate to the header frame for the download and press CTRL-G. The software will be downloaded and saved to the current directory.
+.PP
+Hidden text is often used to implement quizes and the like. Hidden text can be revealed by typing CTRL-R.
+.PP
+Use CTRL-C to quit. If postamble (see below) is defined for the service, logoff will be done automatically.
+.PP
+These commands are specific to TeeFax.
+.TP
+\fBH
+Hold the current page
+.TP
+\fB.
+Advance to the next page
+.TP
+\fBU,I,O,P
+FastText red, green, yellow and blue buttons
+.SH FILES
+Use 'whereis vidtex' to locate vidtexrc. Typically it will exist at /usr/local/etc/vidtex/vidtexrc.
+.PP
+The program will also look in the user's HOME directory and the current working directory (in that order) for vidtexrc files. All will be read and when displaying the menu, all entries will be listed.
+.PP
+Service hosts are listed one per line in the file. Lines may be commented by placing a '#' at the start of the line. Fields are tab delimited and are as follows:
+.TP
+\fBDisplay name
+.TP
+\fBHost name
+.TP
+\fBPort number
+.TP
+\fBPreamble (optional)
+Upto 20 bytes may be specified in decimal, separated by spaces. These are sent to the host on connection.
+.TP
+\fBPostamble (optional)
+Upto 20 bytes may be specified in decimal, separated by spaces. These are sent to the host on termination. Typically this might be the standard Viewdata logoff sequence of '*90#', although note that '#' should be translated to '_' so in effect this would be '*90_'.
+.SH AUTHOR
+Simon Laszcz
