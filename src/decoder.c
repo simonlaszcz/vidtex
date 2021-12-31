@@ -559,7 +559,6 @@ vt_trace(struct vt_decoder_state *state, char *format, ...)
     }
 }
 
-
 static void
 vt_cursor(struct vt_decoder_state *state)
 {

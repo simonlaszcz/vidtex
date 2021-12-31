@@ -3,11 +3,13 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
+#include <inttypes.h>
 #include <locale.h>
 #include <ncursesw/curses.h>
 #include <netdb.h>
 #include <poll.h>
 #include <signal.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -25,6 +27,12 @@ const char *sys_conf_dir = SYSCONFDIR;
 const char *sys_conf_dir = NULL;
 #endif
 
+#ifdef VERSION
+const char *version = VERSION;
+#else
+const char *version = "0.0.0";
+#endif
+
 #define vt_perror() fprintf(stderr, \
     "Error: %s (%d)\n\tat %s line %d\n", strerror(errno), errno, __FILE__, __LINE__)
 #define vt_is_ctrl(x) ((x) & 0x1F)
@@ -33,16 +41,15 @@ const char *sys_conf_dir = NULL;
 #define BUFFER_LEN 1024
 #define MAX_AMBLE_LEN 10
 #define POLL_PERIOD_MS -1
-#define VERSION "1.0.0"
 
 struct vt_rc_entry
 {
     char *name;
     char *host;
     char *port;
-    int preamble[MAX_AMBLE_LEN];
+    uint8_t preamble[MAX_AMBLE_LEN];
     int preamble_length;
-    int postamble[MAX_AMBLE_LEN];
+    uint8_t postamble[MAX_AMBLE_LEN];
     int postamble_length;
 };
 
@@ -66,7 +73,7 @@ static void vt_terminate(int signal);
 static void vt_cleanup(struct vt_session_state *session);
 static int vt_get_rc(const char *dir, struct vt_rc_entry ***rc_data, int *rc_data_count);
 static char *vt_duplicate_token(char *token);
-static int vt_scan_array(char *token, int buffer[]);
+static int vt_scan_array(char *token, uint8_t buffer[]);
 static void vt_free_rc(struct vt_rc_entry *rc_data[], int rc_data_count);
 static int vt_parse_options(int argc, char *argv[], struct vt_session_state *session);
 static struct vt_rc_entry *vt_show_rc_menu(struct vt_rc_entry **rc_data, int rc_data_count);
@@ -74,6 +81,7 @@ static int vt_connect(struct vt_session_state *session);
 static bool vt_is_valid_fd(int fd);
 static int vt_transform_input(int ch);
 static void vt_usage();
+static void vt_trace(struct vt_session_state *session, char *format, ...);
 
 volatile sig_atomic_t terminate_received = false;
 volatile sig_atomic_t socket_closed = false;
@@ -295,8 +303,8 @@ vt_cleanup(struct vt_session_state *session)
     endwin();
 
     if (session->socket_fd > -1) {
-        int default_buffer[4] = {'*', '9', '0', '_'};
-        int *buffer = default_buffer;
+        uint8_t default_buffer[4] = {'*', '9', '0', '_'};
+        uint8_t *buffer = default_buffer;
         int len = 4;
         
         if (session->selected_rc != NULL && session->selected_rc->postamble_length > 0) {
@@ -306,6 +314,12 @@ vt_cleanup(struct vt_session_state *session)
 
         //  If write fails it was closed by the host first
         if (write(session->socket_fd, buffer, len) == len) {
+            vt_trace(session, "postamble: ");
+            for (int i = 0; i < len; ++i) {
+                vt_trace(session, "%d '%c' ", buffer[i], buffer[i]);
+            }
+            vt_trace(session, "\n");
+
             if (shutdown(session->socket_fd, SHUT_RDWR) == -1) {
                 vt_perror();
             }
@@ -498,9 +512,10 @@ vt_duplicate_token(char *token)
 }
 
 static int
-vt_scan_array(char *token, int buffer[])
+vt_scan_array(char *token, uint8_t buffer[])
 {
-    int count = sscanf(token, "%d %d %d %d %d %d %d %d %d %d", 
+    int count = sscanf(token, 
+        "%"SCNu8 " %"SCNu8 " %"SCNu8 " %"SCNu8 " %"SCNu8 " %"SCNu8 " %"SCNu8 " %"SCNu8 " %"SCNu8 " %"SCNu8,
         &buffer[0], &buffer[1], &buffer[2], &buffer[3], &buffer[4],
         &buffer[5], &buffer[6], &buffer[7], &buffer[8], &buffer[9]);
 
@@ -691,14 +706,16 @@ vt_connect(struct vt_session_state *session)
         goto abend;
     }
 
-    int preamble[MAX_AMBLE_LEN + 1] = {0};
+    uint8_t preamble[MAX_AMBLE_LEN + 1] = {0};
     preamble[0] = 22;
     int preamble_len = 1;
 
     if (session->selected_rc != NULL && session->selected_rc->preamble_length > 0) {
-        int n = sizeof(int) * session->selected_rc->preamble_length;
-        memcpy(&preamble[1], session->selected_rc->preamble, n);
         preamble_len += session->selected_rc->preamble_length;
+
+        for (int i = 0; i < session->selected_rc->preamble_length; ++i) {
+            preamble[i + 1] = session->selected_rc->preamble[i];
+        }
     }
 
     int sz = write(session->socket_fd, preamble, preamble_len);
@@ -712,6 +729,12 @@ vt_connect(struct vt_session_state *session)
         }
         goto abend;
     }
+
+    vt_trace(session, "preamble: ");
+    for (int i = 0; i < preamble_len; ++i) {
+        vt_trace(session, "%d '%c' ", preamble[i], preamble[i]);
+    }
+    vt_trace(session, "\n");
 
     return EXIT_SUCCESS;
 
@@ -743,7 +766,7 @@ vt_transform_input(int ch)
 static void
 vt_usage()
 {
-    fprintf(stderr, "Version: %s\n", VERSION);
+    fprintf(stderr, "Version: %s\n", version);
     fprintf(stderr, "SYSCONFDIR=%s\n", sys_conf_dir);
     fprintf(stderr, "Usage: vidtex [options]\nOptions:\n");
     fprintf(stderr, "%-16s\tOutput bold brighter colours\n", "--bold");
@@ -755,4 +778,15 @@ vt_usage()
     fprintf(stderr, "%-16s\tMonochrome display\n", "--mono");
     fprintf(stderr, "%-16s\tViewdata service host port\n", "--port number");
     fprintf(stderr, "%-16s\tWrite trace to file\n", "--trace filename");
+}
+
+static void
+vt_trace(struct vt_session_state *session, char *format, ...)
+{
+    if (session->decoder_state.trace_file != NULL) {
+        va_list args;
+        va_start(args, format);
+        vfprintf(session->decoder_state.trace_file, format, args);
+        va_end(args);
+    }
 }

@@ -100,7 +100,7 @@ Use 'whereis vidtex' to locate vidtexrc. Typically it will exist at /usr/local/e
 .PP
 The program will also look in the user's HOME directory and the current working directory (in that order) for vidtexrc files. All will be read and when displaying the menu, all entries will be listed.
 .PP
-Service hosts are listed one per line in the file. Lines may be commented by placing a '#' at the start of the line. Fields are tab delimited and are as follows:
+Service hosts are listed one per line in the file. Lines may be commented by placing a '#' at the start of the line. Fields are delimited by either tab, ',' or '|' and are as follows:
 .TP
 \fBDisplay name
 .TP
@@ -109,7 +109,7 @@ Service hosts are listed one per line in the file. Lines may be commented by pla
 \fBPort number
 .TP
 \fBPreamble (optional)
-Upto 20 bytes may be specified in decimal, separated by spaces. These are sent to the host on connection.
+Upto 20 bytes may be specified in decimal, separated by spaces. These are sent to the host on connection. If there is no preamble but there is postamble, use a space for preamble.
 .TP
 \fBPostamble (optional)
 Upto 20 bytes may be specified in decimal, separated by spaces. These are sent to the host on termination. Typically this might be the standard Viewdata logoff sequence of '*90#', although note that '#' should be translated to '_' so in effect this would be '*90_'.
