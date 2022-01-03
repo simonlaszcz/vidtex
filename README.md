@@ -1,8 +1,5 @@
 # vidtex - ncurses videotex/viewdata client
 
-Viewing TeeFax 
-![screen shot](screenshot.jpg?raw=true)
-
 > **See the installed man page for more detailed usage instructions**
 
 **vidtex** is a Viewdata/Videotex client that can connect to services over TCP. Currently these services are NXTel, TeeFax, Telstar and Tetrachloromethane. Additional services may be configured by modifying the file \fIvidtexrc\fR. Alternatively you may supply the hostname and port number as options.
