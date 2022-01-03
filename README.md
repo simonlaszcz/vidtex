@@ -1,5 +1,7 @@
 # vidtex - ncurses videotex/viewdata client
 
+Viewing TeeFax 
+![screen shot](screenshot.jpg?raw=true)
 
 > **See the installed man page for more detailed usage instructions**
 
@@ -59,3 +61,8 @@ Several variations are available but the following is recommended:
     xterm -fa ModeSeven -fs 10 &
     #   Within the new terminal
     vidtex --menu --galax
+
+#   Using KiTTY or PuTTY from Windows
+    1. Download https://galax.xyz/TELETEXT/MODE7GX3.TTF
+    2. Drop the file into Control Panel\Appearance and Personalisation\Fonts
+    3. In KiTTY/PuTTY, change the font in Settings\Window\Appearance
