@@ -48,3 +48,14 @@ Several variations are available but the following is recommended:
     vidtex --menu --galax
     #   If not
     vidtex --menu
+
+##  Using xterm with the Galax font in X Windows
+    #   Install the font into your local font dir
+    mkdir -p ~/.local/share/fonts
+    cd ~/.local/share/fonts
+    wget https://galax.xyz/TELETEXT/MODE7GX3.TTF
+    fc-cache -v
+    #   Open a new terminal
+    xterm -fa ModeSeven -fs 10 &
+    #   Within the new terminal
+    vidtex --menu --galax
