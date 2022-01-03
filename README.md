@@ -36,7 +36,7 @@ Several variations are available but the following is recommended:
 <https://galax.xyz/TELETEXT/MODE7GX3.TTF>
 
 ## Installation
-    wget "https://github.com/simonlaszcz/vidtex/blob/master/releases/vidtex-1.1.0.tar.gz"
+    wget "https://github.com/simonlaszcz/vidtex/blob/master/releases/vidtex-1.1.0.tar.gz?raw=true" -O "vidtex-1.1.0.tar.gz"
     tar xvf vidtex-1.1.0.tar.gz
     cd vidtex-1.1.0
     ./configure
