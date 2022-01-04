@@ -34,6 +34,11 @@ Several variations are available but the following is recommended:
 
 <https://galax.xyz/TELETEXT/MODE7GX3.TTF>
 
+
+> **TIP: Some font sizes result in unwanted artefacts, probably due to padding and scaling.**
+> **I've found that 16pt and 26pt render without artefacts**
+
+
 ## Installation
     wget "https://github.com/simonlaszcz/vidtex/blob/master/releases/vidtex-1.1.0.tar.gz?raw=true" -O "vidtex-1.1.0.tar.gz"
     tar xvf vidtex-1.1.0.tar.gz
