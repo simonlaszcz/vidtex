@@ -36,7 +36,7 @@ Several variations are available but the following is recommended:
 
 
 > **TIP: Some font sizes result in unwanted artefacts, probably due to padding and scaling.**
-> **I've found that 16pt and 26pt render without artefacts**
+> **I've found that 16pt and 26pt render without artefacts.**
 
 
 ## Installation
