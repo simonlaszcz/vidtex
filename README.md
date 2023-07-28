@@ -40,9 +40,9 @@ Several variations are available but the following is recommended:
 
 
 ## Installation
-    wget "https://github.com/simonlaszcz/vidtex/blob/master/releases/vidtex-1.1.0.tar.gz?raw=true" -O "vidtex-1.1.0.tar.gz"
-    tar xvf vidtex-1.1.0.tar.gz
-    cd vidtex-1.1.0
+    wget "https://github.com/simonlaszcz/vidtex/blob/master/releases/vidtex-1.2.0.tar.gz?raw=true" -O "vidtex-1.2.0.tar.gz"
+    tar xvf vidtex-1.2.0.tar.gz
+    cd vidtex-1.2.0
     ./configure
     sudo make install
 
