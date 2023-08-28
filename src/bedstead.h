@@ -1,5 +1,5 @@
-#ifndef __BEDSTEAD_H
-#define __BEDSTEAD_H
+#ifndef BEDSTEAD_H
+#define BEDSTEAD_H
 
 #include <stdint.h>
 #include <stdbool.h>

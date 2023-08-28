@@ -1,5 +1,5 @@
-#ifndef __GALAX_H
-#define __GALAX_H
+#ifndef GALAX_H
+#define GALAX_H
 
 #include <stdint.h>
 #include <stdbool.h>

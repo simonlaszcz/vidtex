@@ -1,5 +1,5 @@
-#ifndef __DECODER_H
-#define __DEODER_H
+#ifndef DECODER_H
+#define DEODER_H
 
 #ifndef _XOPEN_SOURCE
 #define _XOPEN_SOURCE 700
@@ -8,36 +8,38 @@
 #include <ncursesw/curses.h>
 #include <stdbool.h>
 #include <string.h>
+#include <stdio.h>
 #include "bedstead.h"
 #include "galax.h"
 
-#define MAX_ROWS 24
-#define MAX_COLS 40
-#define FRAME_BUFFER_MAX 2000
-#define SPACE L' '
+#define MAX_ROWS            (24)
+#define MAX_COLS            (40)
+#define FRAME_BUFFER_MAX    (2000)
+#define WSPACE              L' '
+#define SPACE               ' '
 
 enum vt_decoder_color
 {
-    BLACK = COLOR_BLACK,
-    RED = COLOR_RED,
-    GREEN = COLOR_GREEN,
-    YELLOW = COLOR_YELLOW,
-    BLUE = COLOR_BLUE,
+    BLACK   = COLOR_BLACK,
+    RED     = COLOR_RED,
+    GREEN   = COLOR_GREEN,
+    YELLOW  = COLOR_YELLOW,
+    BLUE    = COLOR_BLUE,
     MAGENTA = COLOR_MAGENTA,
-    CYAN = COLOR_CYAN,
-    WHITE = COLOR_WHITE,
+    CYAN    = COLOR_CYAN,
+    WHITE   = COLOR_WHITE,
     //  NULL/unspecified
-    NONE = -1 
+    NONE    = -1 
 };
 
 enum vt_decoder_tristate
 {
-    TRI_FALSE = 0,
-    TRI_TRUE = 1,
-    TRI_UNDEF = -1
+    TRI_FALSE   = 0,
+    TRI_TRUE    = 1,
+    TRI_UNDEF   = -1
 };
 
-struct vt_char
+struct vt_decoder_char
 {
     uint16_t single;
     uint16_t upper;
@@ -83,7 +85,7 @@ struct vt_decoder_flags
     Setting False is Set-After
     */
     bool is_mosaic_held;
-    struct vt_char held_mosaic;
+    struct vt_decoder_char held_mosaic;
     bool is_double_height;
     //  DC1 = on, DC4 = off. Set-At
     bool is_cursor_on;
@@ -99,7 +101,7 @@ struct vt_decoder_after_flags
     enum vt_decoder_tristate is_double_height;
 };
 
-struct vt_attr
+struct vt_decoder_attr
 {
     //  Curses attr
     attr_t attr;
@@ -112,7 +114,8 @@ struct vt_attr
 
 struct vt_decoder_cell
 {
-    struct vt_attr attr;
+    struct vt_decoder_attr attr;
+    //  type used by ncursesw
     wchar_t character;
 };
 
@@ -129,22 +132,24 @@ struct vt_decoder_state
     int col;
     //  Set when we need to ignore double height row 2 in the input stream
     int dheight_low_row;
-    wchar_t frame_buffer[FRAME_BUFFER_MAX];
+    //  Raw frame buffer as read from the socket/fd etc. Used when saving etc
+    uint8_t frame_buffer[FRAME_BUFFER_MAX];
     int frame_buffer_offset;
-    //  Store the characters written to the first row so we can check for the page number
-    wchar_t header_row[MAX_COLS + 1];
+    //  The first row of the frame buffer/screen; so we can check header data like frame number
+    uint8_t header_row[MAX_COLS + 1];
     bool screen_flash_state;
     bool screen_revealed_state;
     struct vt_decoder_cell cells[MAX_ROWS][MAX_COLS];
-    struct vt_char space;
+    struct vt_decoder_char space;
 
     uint16_t (*map_char)(int row_code, int col_code, bool is_alpha, 
         bool is_contiguous, bool is_dheight, bool is_dheight_lower);
 };
 
 void vt_decoder_init(struct vt_decoder_state *state);
-void vt_decode(struct vt_decoder_state *state, uint8_t *buffer, int count);
-void vt_toggle_flash(struct vt_decoder_state *state);
-void vt_toggle_reveal(struct vt_decoder_state *state);
+void vt_decoder_save(struct vt_decoder_state *state, FILE *fout);
+void vt_decoder_decode(struct vt_decoder_state *state, uint8_t *buffer, int count);
+void vt_decoder_toggle_flash(struct vt_decoder_state *state);
+void vt_decoder_toggle_reveal(struct vt_decoder_state *state);
 
 #endif

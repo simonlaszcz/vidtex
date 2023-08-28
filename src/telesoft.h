@@ -1,5 +1,5 @@
-#ifndef __TELESOFT_H
-#define __TELESOFT_H
+#ifndef TELESOFT_H
+#define TELESOFT_H
 
 #include <stdio.h>
 #include <stdint.h>
@@ -8,8 +8,8 @@
 #include <unistd.h>
 
 #define CHAR_THREE_QUARTERS (0b1111101)
-#define CHAR_SPACE (0b0100000)
-#define CHAR_BAR (0b1111100)
+#define CHAR_SPACE          (0b0100000)
+#define CHAR_BAR            (0b1111100)
 
 struct vt_tele_state
 {
@@ -33,4 +33,5 @@ struct vt_tele_state
 void vt_tele_reset(struct vt_tele_state *state);
 bool vt_tele_decode_header(struct vt_tele_state *state, uint8_t *buffer, int count);
 void vt_tele_decode(struct vt_tele_state *state, uint8_t *buffer, int count, int fd_out);
+
 #endif

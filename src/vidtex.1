@@ -38,8 +38,14 @@ Always display the cursor
 \-\-\fBdump \fIfile
 Dump all bytes received from the host to \fIfile\fR
 .TP
+\-\-\fBfile \fIfile
+Load and display the file/frame previously saved using CTRL-f
+.TP
 \-\-\fBgalax
 Output character codes compatible with the Galax Mode 7 font
+.TP
+\-\-\fBhelp
+Output usage instructions
 .TP
 \-\-\fBhost \fIname
 Viewdata service host name
@@ -55,6 +61,9 @@ Viewdata service host port
 .TP
 \-\-\fBtrace \fIfile
 Write a trace of processing to \fIfile\fR
+.TP
+\-\-\fBversion
+Display the version number
 .SH USAGE
 Viewdata is the basis of both TELETEXT and more interactive BBS-like systems. The former was normally received using a Television set. Pages (or more precisely, frames) were navigated by entering three digit page numbers. The TeeFax service is a TELETEXT service.
 .PP
@@ -79,11 +88,15 @@ Logoff
 .PP
 Note that RETURN can be used instead of '#' and vice versa.
 .PP
-Viewdata services often provide software that can be downloaded. Telstar and NXTel both provide this feature. To download software, navigate to the header frame for the download and press CTRL-G. The software will be downloaded and saved to the current directory.
+Viewdata services often provide software that can be downloaded. Telstar and NXTel both provide this feature. To download software, navigate to the header frame for the download and press CTRL-g. The software will be downloaded and saved to the current directory.
 .PP
-Hidden text is often used to implement quizes and the like. Hidden text can be revealed by typing CTRL-R.
+Hidden text is often used to implement quizes and the like. Hidden text can be revealed by typing CTRL-r.
 .PP
-Use CTRL-C to quit. If postamble (see below) is defined for the service, logoff will be done automatically.
+Use CTRL-c to quit. If postamble (see below) is defined for the service, logoff will be done automatically.
+.PP
+Use CTRL-b to toggle between bold and normal colours.
+.PP
+Use CTRL-f to save the current frame to file. This may later be displayed using the --file option. Frames are saved to either the current working directory or $HOME. The format of the filename is host_YYMMDDHHMMSS.frame.
 .PP
 These commands are specific to TeeFax.
 .TP

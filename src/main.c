@@ -1,31 +1,26 @@
 #include <arpa/inet.h>
-#include <ctype.h>
-#include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
-#include <inttypes.h>
 #include <locale.h>
 #include <ncursesw/curses.h>
 #include <netdb.h>
 #include <poll.h>
 #include <signal.h>
 #include <stdarg.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/timerfd.h>
 #include <sys/types.h>
+#include <time.h>
 #include <unistd.h>
 #include "bedstead.h"
 #include "decoder.h"
 #include "telesoft.h"
-
-#ifdef SYSCONFDIR
-const char *sys_conf_dir = SYSCONFDIR;
-#else
-const char *sys_conf_dir = NULL;
-#endif
+#include "log.h"
+#include "rc.h"
 
 #ifdef VERSION
 const char *version = VERSION;
@@ -33,55 +28,45 @@ const char *version = VERSION;
 const char *version = "0.0.0";
 #endif
 
-#define vt_perror() fprintf(stderr, \
-    "Error: %s (%d)\n\tat %s line %d\n", strerror(errno), errno, __FILE__, __LINE__)
-#define vt_is_ctrl(x) ((x) & 0x1F)
-#define RCFILE "vidtexrc"
-#define IO_BUFFER_LEN 2048
-#define BUFFER_LEN 1024
-#define MAX_AMBLE_LEN 10
-#define POLL_PERIOD_MS -1
-
-struct vt_rc_entry
-{
-    char *name;
-    char *host;
-    char *port;
-    uint8_t preamble[MAX_AMBLE_LEN];
-    int preamble_length;
-    uint8_t postamble[MAX_AMBLE_LEN];
-    int postamble_length;
-};
+#define vt_is_ctrl(x)       ((x) & 0x1F)
+#define KEY_REVEAL          'r'
+#define KEY_DOWNLOAD        'g'
+#define KEY_BOLD            'b'
+#define KEY_SAVE_FRAME      'f'
+#define IO_BUFFER_LEN       (2048)
+#define POLL_PERIOD_MS      (-1)
+#define TIMESTR_MAX         (15)
 
 struct vt_session_state
 {
-    FILE *dump_file;
-    struct vt_rc_entry **rc_data;
-    int rc_data_count;
+    struct vt_rc_state rc_state;
     struct vt_rc_entry *selected_rc;
+    struct vt_decoder_state decoder_state;
+    struct vt_tele_state tele_state;
+    bool show_menu;
+    bool show_help;
+    bool show_version;
+    FILE *load_file;
+    // either from command line or shortcut to selected rc
     char *host;
     char *port;
+    FILE *dump_file;
     int socket_fd;
-    struct vt_decoder_state decoder_state;
-    char *cwd;
     int flash_timer_fd;
-    struct vt_tele_state tele_state;
     int download_fd;
 };
 
+static void vt_cleanup(void);
 static void vt_terminate(int signal);
-static void vt_cleanup(struct vt_session_state *session);
-static int vt_get_rc(const char *dir, struct vt_rc_entry ***rc_data, int *rc_data_count);
-static char *vt_duplicate_token(char *token);
-static int vt_scan_array(char *token, uint8_t buffer[]);
-static void vt_free_rc(struct vt_rc_entry *rc_data[], int rc_data_count);
 static int vt_parse_options(int argc, char *argv[], struct vt_session_state *session);
-static struct vt_rc_entry *vt_show_rc_menu(struct vt_rc_entry **rc_data, int rc_data_count);
+static int vt_show_file(struct vt_session_state *state);
 static int vt_connect(struct vt_session_state *session);
 static bool vt_is_valid_fd(int fd);
 static int vt_transform_input(int ch);
-static void vt_usage();
+static void vt_usage(void);
+static void vt_version(void);
 static void vt_trace(struct vt_session_state *session, char *format, ...);
+static void vt_save(struct vt_session_state *session);
 
 volatile sig_atomic_t terminate_received = false;
 volatile sig_atomic_t socket_closed = false;
@@ -94,55 +79,67 @@ main(int argc, char *argv[])
     session.socket_fd = -1;
     session.flash_timer_fd = -1;
     session.download_fd = -1;
+    atexit(vt_cleanup);
 
     struct sigaction new_action;
     new_action.sa_handler = vt_terminate;
     sigemptyset(&new_action.sa_mask);
     new_action.sa_flags = 0;
     if (sigaction(SIGINT, &new_action, NULL) == -1) {
-        vt_perror();
+        log_err();
         goto abend;
     }
     if (sigaction(SIGTERM, &new_action, NULL) == -1) {
-        vt_perror();
+        log_err();
         goto abend;
     }
     if (sigaction(SIGQUIT, &new_action, NULL) == -1) {
-        vt_perror();
+        log_err();
         goto abend;
     }
     if (sigaction(SIGHUP, &new_action, NULL) == -1) {
-        vt_perror();
+        log_err();
         goto abend;
     }
     if (sigaction(SIGPIPE, &new_action, NULL) == -1) {
-        vt_perror();
+        log_err();
         goto abend;
     }
 
-    if (sys_conf_dir != NULL) {
-        if (vt_get_rc(sys_conf_dir, &session.rc_data, &session.rc_data_count) != EXIT_SUCCESS) {
-            goto abend;
-        }
+    if (vt_rc_load(&session.rc_state) != EXIT_SUCCESS) {
+        goto abend;
     }
-
-    char *home = getenv("HOME");
-    if (home != NULL) {
-        if (vt_get_rc(home, &session.rc_data, &session.rc_data_count) != EXIT_SUCCESS) {
-            goto abend;
-        }
-    }
-
-    session.cwd = getcwd(NULL, 0);
-    if (session.cwd != NULL) {
-        if (strcmp(home, session.cwd) != 0) {
-            if (vt_get_rc(session.cwd, &session.rc_data, &session.rc_data_count) != EXIT_SUCCESS) {
-                goto abend;
-            }
-        }
-    }
-
     if (vt_parse_options(argc, argv, &session) != EXIT_SUCCESS) {
+        goto abend;
+    }
+
+    if (session.show_help) {
+        vt_usage();
+        exit(0);
+    }
+    if (session.show_version) {
+        vt_version();
+        exit(0);
+    }
+    if (session.load_file != NULL) {
+        exit(vt_show_file(&session));
+    }
+
+    if (session.show_menu) {
+        session.selected_rc = vt_rc_show_menu(&session.rc_state);
+
+        if (session.selected_rc != NULL) {
+            session.host = session.selected_rc->host;
+            session.port = session.selected_rc->port;
+        }
+        else {
+            fprintf(stderr, "No configuration found\n");
+            goto abend;
+        }
+    }
+
+    if (session.host == NULL || session.port == NULL) {
+        vt_usage();
         goto abend;
     }
 
@@ -152,13 +149,13 @@ main(int argc, char *argv[])
 
     session.flash_timer_fd = timerfd_create(CLOCK_REALTIME, TFD_NONBLOCK);
     if (session.flash_timer_fd == -1) {
-        vt_perror();
+        log_err();
         goto abend;
     }
 
     struct itimerspec flash_time = {{1, 0}, {1, 0}};
     if (timerfd_settime(session.flash_timer_fd, TFD_TIMER_ABSTIME, &flash_time, NULL) == -1) {
-        vt_perror();
+        log_err();
         goto abend;
     }
 
@@ -189,7 +186,7 @@ main(int argc, char *argv[])
         int prv = poll(poll_data, 3, POLL_PERIOD_MS);
 
         if (prv == -1 && errno != EINTR) {
-            vt_perror();
+            log_err();
             goto abend;
         }
 
@@ -205,7 +202,7 @@ main(int argc, char *argv[])
                     fwrite(buffer, sizeof(uint8_t), nread, session.dump_file);
                 }
 
-                vt_decode(&session.decoder_state, buffer, nread);
+                vt_decoder_decode(&session.decoder_state, buffer, nread);
 
                 if (!is_downloading) {
                     can_download = vt_tele_decode_header(&session.tele_state, buffer, nread);
@@ -216,7 +213,7 @@ main(int argc, char *argv[])
                     if (session.tele_state.end_of_file || session.tele_state.end_of_frame) {
                         if (session.tele_state.end_of_file) {
                             if (close(session.download_fd) == -1) {
-                                vt_perror();
+                                log_err();
                                 goto abend;
                             }
 
@@ -240,17 +237,17 @@ main(int argc, char *argv[])
             switch (ch) {
             case EOF:
                 break;
-            case vt_is_ctrl('r'):
-                vt_toggle_reveal(&session.decoder_state);
+            case vt_is_ctrl(KEY_REVEAL):
+                vt_decoder_toggle_reveal(&session.decoder_state);
                 break;
-            case vt_is_ctrl('g'):
+            case vt_is_ctrl(KEY_DOWNLOAD):
                 if (can_download) {
                     is_downloading = true;
                     session.download_fd 
-                        = open(session.tele_state.filename, O_CREAT | O_WRONLY | O_TRUNC, S_IRWXU);
+                        = open(session.tele_state.filename, O_CREAT|O_WRONLY|O_TRUNC, S_IRWXU);
 
                     if (session.download_fd == -1) {
-                        vt_perror();
+                        log_err();
                         goto abend;
                     }
 
@@ -258,6 +255,12 @@ main(int argc, char *argv[])
                         socket_closed = true;
                     }
                 }
+                break;
+            case vt_is_ctrl(KEY_SAVE_FRAME):
+                vt_save(&session);
+                break;
+            case vt_is_ctrl(KEY_BOLD):
+                session.decoder_state.bold_mode = !session.decoder_state.bold_mode;
                 break;
             default:
                 if (write(session.socket_fd, &ch, 1) < 1) {
@@ -270,21 +273,88 @@ main(int argc, char *argv[])
         if (poll_data[2].revents & POLLIN) {
             uint64_t elapsed = 0;
             if (read(session.flash_timer_fd, &elapsed, sizeof(uint64_t)) > 0) {
-                vt_toggle_flash(&session.decoder_state);
+                vt_decoder_toggle_flash(&session.decoder_state);
             }
         }
     }
 
-    vt_cleanup(&session);
     if (socket_closed) {
         printf("Connection closed by host\n");
     }
     printf("Session terminated\nGoodbye\n");
-    exit(EXIT_SUCCESS);
-
+    return 0;
 abend:
-    vt_cleanup(&session);
-    exit(EXIT_FAILURE);
+    return 1;
+}
+
+static void 
+vt_cleanup(void)
+{
+    endwin();
+
+    if (session.socket_fd > -1) {
+        uint8_t default_buffer[4] = {'*', '9', '0', '_'};
+        uint8_t *buffer = default_buffer;
+        int len = 4;
+        
+        if (session.selected_rc != NULL && session.selected_rc->postamble_length > 0) {
+            buffer = session.selected_rc->postamble;
+            len = session.selected_rc->postamble_length;
+        }
+
+        //  If write fails it was closed by the host first
+        if (write(session.socket_fd, buffer, len) == len) {
+            vt_trace(&session, "postamble: ");
+            for (int i = 0; i < len; ++i) {
+                vt_trace(&session, "%d '%c' ", buffer[i], buffer[i]);
+            }
+            vt_trace(&session, "\n");
+
+            if (shutdown(session.socket_fd, SHUT_RDWR) == -1) {
+                log_err();
+            }
+
+            if (close(session.socket_fd) == -1) {
+                log_err();
+            }
+        }
+    }
+
+    if (session.flash_timer_fd > -1) {
+        if (close(session.flash_timer_fd) == -1) {
+            log_err();
+        }
+    }
+
+    if (session.dump_file != NULL) {
+        if (fclose(session.dump_file) == -1) {
+            log_err();
+        }
+    }
+
+    if (session.download_fd > -1) {
+        if (close(session.download_fd) == -1) {
+            log_err();
+        }
+    }
+
+    if (session.decoder_state.trace_file != NULL) {
+        if (fclose(session.decoder_state.trace_file) == -1) {
+            log_err();
+        }
+    }
+
+    vt_rc_free(&session.rc_state);
+
+    if (session.selected_rc == NULL) {
+        //  Otherwise they'll be freed by vt_rc_free()
+        free(session.host);
+        free(session.port);
+    }
+
+    if (session.load_file != NULL) {
+        fclose(session.load_file);
+    }
 }
 
 static void
@@ -295,249 +365,6 @@ vt_terminate(int signal)
     if (signal == SIGPIPE) {
         socket_closed = true;
     }
-}
-
-static void 
-vt_cleanup(struct vt_session_state *session)
-{
-    endwin();
-
-    if (session->socket_fd > -1) {
-        uint8_t default_buffer[4] = {'*', '9', '0', '_'};
-        uint8_t *buffer = default_buffer;
-        int len = 4;
-        
-        if (session->selected_rc != NULL && session->selected_rc->postamble_length > 0) {
-            buffer = session->selected_rc->postamble;
-            len = session->selected_rc->postamble_length;
-        }
-
-        //  If write fails it was closed by the host first
-        if (write(session->socket_fd, buffer, len) == len) {
-            vt_trace(session, "postamble: ");
-            for (int i = 0; i < len; ++i) {
-                vt_trace(session, "%d '%c' ", buffer[i], buffer[i]);
-            }
-            vt_trace(session, "\n");
-
-            if (shutdown(session->socket_fd, SHUT_RDWR) == -1) {
-                vt_perror();
-            }
-
-            if (close(session->socket_fd) == -1) {
-                vt_perror();
-            }
-        }
-    }
-
-    if (session->flash_timer_fd > -1) {
-        if (close(session->flash_timer_fd) == -1) {
-            vt_perror();
-        }
-    }
-
-    if (session->dump_file != NULL) {
-        if (fclose(session->dump_file) == -1) {
-            vt_perror();
-        }
-    }
-
-    if (session->download_fd > -1) {
-        if (close(session->download_fd) == -1) {
-            vt_perror();
-        }
-    }
-
-    if (session->decoder_state.trace_file != NULL) {
-        if (fclose(session->decoder_state.trace_file) == -1) {
-            vt_perror();
-        }
-    }
-
-    if (session->selected_rc == NULL) {
-        //  Otherwise they'll be freed by vt_free_rc()
-        if (session->host != NULL) {
-            free(session->host);
-        }
-
-        if (session->port != NULL) {
-            free(session->port);
-        }
-    }
-
-    if (session->rc_data_count > 0) {
-        vt_free_rc(session->rc_data, session->rc_data_count);
-    }
-
-    if (session->cwd != NULL) {
-        free(session->cwd);
-    }
-}
-
-static int 
-vt_get_rc(const char *dir, struct vt_rc_entry ***rc_data, int *rc_data_count)
-{
-    char path_buffer[BUFFER_LEN] = {0};
-    int sz = snprintf(path_buffer, BUFFER_LEN, "%s/%s", dir, RCFILE);
-
-    if (sz < 0) {
-        vt_perror();
-        return EXIT_FAILURE;
-    }
-    else if (sz >= BUFFER_LEN) {
-        errno = EOVERFLOW;
-        vt_perror();
-        return EXIT_FAILURE;
-    }
-
-    FILE *fin = fopen(path_buffer, "rt");
-
-    if (fin == NULL) {
-        return EXIT_SUCCESS;
-    }
-
-    char buffer[BUFFER_LEN];
-    int count = *rc_data_count;
-    struct vt_rc_entry **root = *rc_data;
-    char *sin = fgets(buffer, BUFFER_LEN, fin);
-
-    while (sin != NULL) {
-        if (sin[0] == '#') {
-            sin = fgets(buffer, BUFFER_LEN, fin);
-            continue;
-        }
-
-        struct vt_rc_entry *entry = malloc(sizeof(struct vt_rc_entry));
-        if (entry == NULL) {
-            vt_perror();
-            goto abend;
-        }
-
-        char *token = strtok(sin, "\t\n,|");
-        int field_num = 0;
-
-        while (token != NULL) {
-            switch (++field_num) {
-            case 1:
-                entry->name = vt_duplicate_token(token);
-                if (entry->name == NULL) {
-                    fprintf(stderr, "No name specified at line %d\n", count + 1);
-                    goto abend;
-                }
-                break;
-            case 2:
-                entry->host = vt_duplicate_token(token);
-                if (entry->host == NULL) {
-                    fprintf(stderr, "No host specified at line %d\n", count + 1);
-                    goto abend;
-                }
-                break;
-            case 3:
-                entry->port = vt_duplicate_token(token);
-                if (entry->port == NULL) {
-                    fprintf(stderr, "No port specified at line %d\n", count + 1);
-                    goto abend;
-                }
-                break;
-            case 4: // optional
-                entry->preamble_length = vt_scan_array(token, entry->preamble);
-                break;
-            case 5: // optional
-                entry->postamble_length = vt_scan_array(token, entry->postamble);
-                break;
-            };
-             
-            token = strtok(NULL, "\t\n,|");
-        }
-
-        if (field_num < 3) {
-            fprintf(stderr, "Too few fields at line %d\n", count + 1);
-            goto abend;
-        }
-
-        if (root == NULL) {
-            root = malloc(sizeof(struct vt_rc_entry));
-        }
-        else {
-            root = realloc(root, sizeof(struct vt_rc_entry) * count);
-        }
-
-        if (root == NULL) {
-            vt_perror();
-            goto abend;
-        }
-
-        root[count++] = entry;
-        sin = fgets(buffer, BUFFER_LEN, fin);
-    }
-
-    *rc_data = root;
-    *rc_data_count = count;
-    fclose(fin);
-    return EXIT_SUCCESS;
-
-abend:
-    fprintf(stderr, "Errors found in configuration file\n");
-    fclose(fin);
-    return EXIT_FAILURE;
-}
-
-static char *
-vt_duplicate_token(char *token)
-{
-    if (token == NULL) {
-        return NULL;
-    }
-
-    int len = strlen(token);
-    int idx = len - 1;
-
-    while (idx > -1 && isspace(token[idx])) {
-        token[idx--] = 0;
-    }
-
-    len = idx + 1;
-
-    if (len == 0) {
-        return NULL;
-    }
-
-    char *copy = strndup(token, len);
-
-    if (copy == NULL) {
-        vt_perror();
-    }
-
-    return copy;
-}
-
-static int
-vt_scan_array(char *token, uint8_t buffer[])
-{
-    int count = sscanf(token, 
-        "%"SCNu8 " %"SCNu8 " %"SCNu8 " %"SCNu8 " %"SCNu8 " %"SCNu8 " %"SCNu8 " %"SCNu8 " %"SCNu8 " %"SCNu8,
-        &buffer[0], &buffer[1], &buffer[2], &buffer[3], &buffer[4],
-        &buffer[5], &buffer[6], &buffer[7], &buffer[8], &buffer[9]);
-
-    return count > 0 ? count : 0;
-} 
-
-static void 
-vt_free_rc(struct vt_rc_entry *rc[], int count)
-{
-    for (int i = 0; i < count; ++i) {
-        struct vt_rc_entry *e = rc[i];
-
-        free(e->name);
-        free(e->host);
-        free(e->port);
-
-        e->name = NULL;
-        e->host = NULL;
-        e->port = NULL;
-    }
-
-    free(rc);
 }
 
 static int
@@ -555,6 +382,9 @@ vt_parse_options(int argc, char *argv[], struct vt_session_state *session)
         {"trace", required_argument, 0, 0},
         {"bold", no_argument, 0, 0},
         {"galax", no_argument, 0, 0},
+        {"file", required_argument, 0, 0},
+        {"help", no_argument, 0, 0},
+        {"version", no_argument, 0, 0},
         {0, 0, 0, 0}
     };
 
@@ -563,10 +393,10 @@ vt_parse_options(int argc, char *argv[], struct vt_session_state *session)
         case 0:
             switch (optidx) {
             case 0:
-                session->host = vt_duplicate_token(optarg);
+                session->host = vt_rc_duplicate_token(optarg);
                 break;
             case 1:
-                session->port = vt_duplicate_token(optarg);
+                session->port = vt_rc_duplicate_token(optarg);
                 break;
             case 2:
                 if (session->dump_file != NULL) {
@@ -575,25 +405,13 @@ vt_parse_options(int argc, char *argv[], struct vt_session_state *session)
                 }
                 session->dump_file = fopen(optarg, "wb");
                 if (session->dump_file == NULL) {
-                    vt_perror();
+                    log_err();
                     goto abend;
                 }
                 setbuf(session->dump_file, NULL);
                 break;
             case 3:
-                if (session->rc_data_count > 0) {
-                    session->selected_rc = 
-                        vt_show_rc_menu(session->rc_data, session->rc_data_count);
-
-                    if (session->selected_rc != NULL) {
-                        session->host = (*session->selected_rc).host;
-                        session->port = (*session->selected_rc).port;
-                    }
-                }
-                else {
-                    fprintf(stderr, "No configuration found\n");
-                    goto abend;
-                }
+                session->show_menu = true;
                 break;
             case 4:
                 session->decoder_state.force_cursor = true;
@@ -608,7 +426,7 @@ vt_parse_options(int argc, char *argv[], struct vt_session_state *session)
                 }
                 session->decoder_state.trace_file = fopen(optarg, "wt");
                 if (session->decoder_state.trace_file == NULL) {
-                    vt_perror();
+                    log_err();
                     goto abend;
                 }
                 setbuf(session->decoder_state.trace_file, NULL);
@@ -619,6 +437,19 @@ vt_parse_options(int argc, char *argv[], struct vt_session_state *session)
             case 8:
                 session->decoder_state.map_char = &gal_map_char;
                 break;
+            case 9:
+                session->load_file = fopen(optarg, "rb");
+                if (session->load_file == NULL) {
+                    log_err();
+                    goto abend;
+                }
+                break;
+            case 10:
+                session->show_help = true;
+                break;
+            case 11:
+                session->show_version = true;
+                break;
             }
             break;
         case '?':
@@ -627,39 +458,84 @@ vt_parse_options(int argc, char *argv[], struct vt_session_state *session)
         }
     }
 
-    if (session->host == NULL || session->port == NULL) {
-        vt_usage();
-        goto abend;
-    }
-
     return EXIT_SUCCESS;
-
 abend:
     return EXIT_FAILURE;
 }
 
-static struct vt_rc_entry *
-vt_show_rc_menu(struct vt_rc_entry **rc_data, int rc_data_count)
+static int
+vt_show_file(struct vt_session_state *state)
 {
-    printf("%3s %-20s %-30s %-10s\n", "#", "Name", "Host", "Port");
-
-    for (int i = 0; i < rc_data_count; ++i) {
-        struct vt_rc_entry *e = rc_data[i];
-        printf("%3d %-20s %-30s %-10s\n", i, e->name, e->host, e->port);
+    state->flash_timer_fd = timerfd_create(CLOCK_REALTIME, TFD_NONBLOCK);
+    if (state->flash_timer_fd == -1) {
+        log_err();
+        goto abend;
     }
 
-    int choice = -1;
+    struct itimerspec flash_time = {{1, 0}, {1, 0}};
+    if (timerfd_settime(state->flash_timer_fd, TFD_TIMER_ABSTIME, &flash_time, NULL) == -1) {
+        log_err();
+        goto abend;
+    }
 
-    while (choice < 0 || choice >= rc_data_count) {
-        printf("? ");
-        scanf("%d", &choice);
+    setlocale(LC_ALL, "");
+    initscr();
+    if (state->decoder_state.map_char == NULL) {
+        state->decoder_state.map_char = &bed_map_char;
+    }
+    vt_decoder_init(&state->decoder_state);
+    state->decoder_state.win = stdscr;
+    cbreak();
+    nodelay(state->decoder_state.win, true);
+    noecho();
+    keypad(state->decoder_state.win, true);
 
-        if (choice == EOF) {
-            return NULL;
+    uint8_t buffer[IO_BUFFER_LEN];
+    ssize_t nread = 0;
+    while ((nread = fread(buffer, sizeof(uint8_t), IO_BUFFER_LEN, state->load_file)) > 0) {
+        vt_decoder_decode(&state->decoder_state, buffer, nread);
+    }
+
+    struct pollfd poll_data[2] = {
+        {.fd = STDIN_FILENO, .events = POLLIN},
+        {.fd = state->flash_timer_fd, .events = POLLIN}
+    };
+
+    while (!terminate_received) {
+        int prv = poll(poll_data, 2, POLL_PERIOD_MS);
+
+        if (prv == -1 && errno != EINTR) {
+            log_err();
+            goto abend;
+        }
+
+        if (prv < 1) {
+            continue;
+        }
+
+        if (poll_data[0].revents & POLLIN) {
+            int ch = vt_transform_input(getch());
+
+            switch (ch) {
+            case vt_is_ctrl(KEY_REVEAL):
+                vt_decoder_toggle_reveal(&state->decoder_state);
+                break;
+            default:
+                break;
+            }
+        }
+
+        if (poll_data[1].revents & POLLIN) {
+            uint64_t elapsed = 0;
+            if (read(state->flash_timer_fd, &elapsed, sizeof(uint64_t)) > 0) {
+                vt_decoder_toggle_flash(&state->decoder_state);
+            }
         }
     }
 
-    return rc_data[choice];
+    return 0;
+abend:
+    return 1;
 }
 
 static int 
@@ -722,7 +598,7 @@ vt_connect(struct vt_session_state *session)
 
     if (sz != preamble_len) {
         if (sz == -1) {
-            vt_perror();
+            log_err();
         }
         else {
             fprintf(stderr, "Failed to write preamble\n");
@@ -764,20 +640,28 @@ vt_transform_input(int ch)
 }
 
 static void
-vt_usage()
+vt_usage(void)
 {
-    fprintf(stderr, "Version: %s\n", version);
-    fprintf(stderr, "SYSCONFDIR=%s\n", sys_conf_dir);
-    fprintf(stderr, "Usage: vidtex [options]\nOptions:\n");
-    fprintf(stderr, "%-16s\tOutput bold brighter colours\n", "--bold");
-    fprintf(stderr, "%-16s\tAlways show cursor\n", "--cursor");
-    fprintf(stderr, "%-16s\tDump all bytes read from host to file\n", "--dump filename");
-    fprintf(stderr, "%-16s\tOutput char codes for Mode7 font\n", "--galax");
-    fprintf(stderr, "%-16s\tViewdata service host\n", "--host name");
-    fprintf(stderr, "%-16s\tCreate menu from vidtexrc\n", "--menu");
-    fprintf(stderr, "%-16s\tMonochrome display\n", "--mono");
-    fprintf(stderr, "%-16s\tViewdata service host port\n", "--port number");
-    fprintf(stderr, "%-16s\tWrite trace to file\n", "--trace filename");
+    printf("Version: %s\n", version);
+    printf("Usage: vidtex [options]\nOptions:\n");
+    printf("%-16s\tOutput bold brighter colours\n", "--bold");
+    printf("%-16s\tAlways show cursor\n", "--cursor");
+    printf("%-16s\tDump all bytes read from host to file\n", "--dump filename");
+    printf("%-16s\tLoad and display a saved frame\n", "--file filename");
+    printf("%-16s\tOutput char codes for Mode7 font\n", "--galax");
+    printf("%-16s\tShow this help\n", "--help");
+    printf("%-16s\tViewdata service host\n", "--host name");
+    printf("%-16s\tCreate menu from vidtexrc\n", "--menu");
+    printf("%-16s\tMonochrome display\n", "--mono");
+    printf("%-16s\tViewdata service host port\n", "--port number");
+    printf("%-16s\tWrite trace to file\n", "--trace filename");
+    printf("%-16s\tPrint the version number\n", "--version");
+}
+
+static void
+vt_version(void)
+{
+    printf("%s\n", version);
 }
 
 static void
@@ -789,4 +673,33 @@ vt_trace(struct vt_session_state *session, char *format, ...)
         vfprintf(session->decoder_state.trace_file, format, args);
         va_end(args);
     }
+}
+
+static
+void vt_save(struct vt_session_state *session)
+{
+    char timestr[TIMESTR_MAX] = {0};
+    char filename[FILENAME_MAX] = {0};
+    time_t ticks;
+    struct tm *localt;
+    FILE *fout = NULL;
+    bool have_hostname = session->selected_rc != NULL && session->selected_rc->name != NULL;
+
+    time(&ticks);
+    localt = localtime(&ticks);
+    strftime(timestr, TIMESTR_MAX, "%Y%m%d%H%M%S", localt);
+
+    snprintf(filename, FILENAME_MAX, "%s/%s%s%s.frame", 
+        session->rc_state.cwd != NULL ? session->rc_state.cwd : session->rc_state.home, 
+        have_hostname ? session->selected_rc->name : "",
+        have_hostname ? "_" : "",
+        timestr);
+
+    if ((fout = fopen(filename, "w")) == NULL) {
+        log_err();
+        return;
+    }
+
+    vt_decoder_save(&session->decoder_state, fout);
+    fclose(fout);
 }
