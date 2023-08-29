@@ -4,7 +4,7 @@ bin_PROGRAMS=vidtex
 configdir=${sysconfdir}/vidtex
 config_DATA=src/vidtexrc
 
-vidtex_CFLAGS=-std=gnu99 -Werror -Wall -Wextra -g @CURSES_CFLAGS@ -DSYSCONFDIR=\"${configdir}\"
+vidtex_CFLAGS=-g @CURSES_CFLAGS@ -DSYSCONFDIR=\"${configdir}\"
 vidtex_LDADD=@CURSES_LIBS@
 vidtex_SOURCES=\
 	src/bedstead.c \
