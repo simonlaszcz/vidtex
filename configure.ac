@@ -1,4 +1,4 @@
-AC_INIT([vidtex], [1.3.0])
+AC_INIT([vidtex], [1.4.0])
 AX_WITH_CURSES
 AC_ARG_WITH([ncursesw], AC_MSG_ERROR([ncursesw not installed]))
 AC_CONFIG_SRCDIR([src/main.c])

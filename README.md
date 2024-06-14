@@ -40,9 +40,10 @@ Several variations are available but the following is recommended:
 
 
 ## Installation
-    wget "https://github.com/simonlaszcz/vidtex/blob/master/releases/vidtex-1.3.0.tar.gz?raw=true" -O "vidtex-1.3.0.tar.gz"
-    tar xvf vidtex-1.3.0.tar.gz
-    cd vidtex-1.3.0
+    #   Substitute n.n.n with the release number
+    wget "https://github.com/simonlaszcz/vidtex/blob/master/releases/vidtex-n.n.n.tar.gz?raw=true" -O "vidtex-n.n.n.tar.gz"
+    tar xvf vidtex-n.n.n.tar.gz
+    cd vidtex-n.n.n
     ./configure
     sudo make install
 

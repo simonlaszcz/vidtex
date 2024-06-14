@@ -377,7 +377,6 @@ vt_parse_options(int argc, char *argv[], struct vt_session_state *session)
         {"port", required_argument, 0, 0},
         {"dump", required_argument, 0, 0},
         {"menu", no_argument, 0, 0},
-        {"cursor", no_argument, 0, 0},
         {"mono", no_argument, 0, 0},
         {"trace", required_argument, 0, 0},
         {"bold", no_argument, 0, 0},
@@ -414,12 +413,9 @@ vt_parse_options(int argc, char *argv[], struct vt_session_state *session)
                 session->show_menu = true;
                 break;
             case 4:
-                session->decoder_state.force_cursor = true;
-                break;
-            case 5:
                 session->decoder_state.mono_mode = true;
                 break;
-            case 6:
+            case 5:
                 if (session->decoder_state.trace_file != NULL) {
                     vt_usage();
                     goto abend;
@@ -431,23 +427,23 @@ vt_parse_options(int argc, char *argv[], struct vt_session_state *session)
                 }
                 setbuf(session->decoder_state.trace_file, NULL);
                 break;
-            case 7:
+            case 6:
                 session->decoder_state.bold_mode = true;
                 break;
-            case 8:
+            case 7:
                 session->decoder_state.map_char = &gal_map_char;
                 break;
-            case 9:
+            case 8:
                 session->load_file = fopen(optarg, "rb");
                 if (session->load_file == NULL) {
                     log_err();
                     goto abend;
                 }
                 break;
-            case 10:
+            case 9:
                 session->show_help = true;
                 break;
-            case 11:
+            case 10:
                 session->show_version = true;
                 break;
             }
@@ -645,7 +641,6 @@ vt_usage(void)
     printf("Version: %s\n", version);
     printf("Usage: vidtex [options]\nOptions:\n");
     printf("%-16s\tOutput bold brighter colours\n", "--bold");
-    printf("%-16s\tAlways show cursor\n", "--cursor");
     printf("%-16s\tDump all bytes read from host to file\n", "--dump filename");
     printf("%-16s\tLoad and display a saved frame\n", "--file filename");
     printf("%-16s\tOutput char codes for Mode7 font\n", "--galax");

@@ -87,7 +87,6 @@ struct vt_decoder_flags
     bool is_mosaic_held;
     struct vt_decoder_char held_mosaic;
     bool is_double_height;
-    //  DC1 = on, DC4 = off. Set-At
     bool is_cursor_on;
 };
 
